@@ -174,7 +174,7 @@ async function createOrUpdateUser(
       throw new Error(`[setup-keycloak] Erreur réinitialisation mot de passe pour '${username}': ${err}`);
     }
   } else {
-    // Création du nouvel utilisateur
+    // Création du nouvel utilisateur (CI ou environnement vierge)
     const createUrl = `${KEYCLOAK_URL}/admin/realms/${REALM_NAME}/users`;
     const createResponse = await fetch(createUrl, {
       method: "POST",
@@ -185,8 +185,12 @@ async function createOrUpdateUser(
       body: JSON.stringify({
         username,
         email,
+        firstName: username,
+        lastName: "User",
         enabled: true,
         emailVerified: true,
+        // Pas d'actions requises au premier login (pour autoriser le direct grant en CI)
+        requiredActions: [],
         credentials: [
           {
             type: "password",
@@ -213,6 +217,22 @@ async function createOrUpdateUser(
       const usersAfter = (await refetch.json()) as Array<{ id: string }>;
       userId = usersAfter[0].id;
     }
+
+    // Réinitialisation explicite pour forcer le mot de passe comme non-temporaire dans Keycloak
+    const resetUrl = `${KEYCLOAK_URL}/admin/realms/${REALM_NAME}/users/${userId}/reset-password`;
+    await fetch(resetUrl, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: "password",
+        value: password,
+        temporary: false,
+      }),
+    });
+
     console.log(`[setup-keycloak] Utilisateur '${username}' créé avec succès (ID: ${userId}).`);
   }
 
