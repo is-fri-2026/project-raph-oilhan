@@ -1,28 +1,184 @@
 name: CI
 
+# Déclenchement automatique sur chaque Pull Request, push sur main, ou manuellement via l'interface GitHub
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches: [main]
 
 jobs:
+  # =========================================================================
+  # JOB 1 : BUILD & TYPECHECK
+  # Vérifie que le code compile rigoureusement avec TypeScript sans erreurs de typage
+  # =========================================================================
   build:
+    name: Build & Typecheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-      - run: npm ci
-      - run: npm run build
+          cache: "npm"
 
+      - name: Install dependencies
+        run: npm ci
+
+      # --- ANTICIPATION PRISMA ---
+      # Dès que Prisma sera initialisé (@prisma/client), décommentez l'étape ci-dessous.
+      # Pourquoi ? "npm run build" (tsc) compile le projet et nécessite que les types TypeScript
+      # générés par Prisma existent dans 'node_modules/@prisma/client'.
+      # - name: Generate Prisma Client
+      #   run: npx prisma generate
+
+      - name: Compile TypeScript
+        run: npm run build
+
+  # =========================================================================
+  # JOB 2 : LINT OPENAPI CONTRACT
+  # Valide que le contrat d'API dans docs/api/openapi.yaml respecte les standards OpenAPI
+  # =========================================================================
   openapi-lint:
+    name: Lint OpenAPI Contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: "22" }
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Lint OpenAPI spec
         run: npx --yes @redocly/cli@latest lint docs/api/openapi.yaml
+
+  # =========================================================================
+  # JOB 3 : TESTS D'INTÉGRATION BRUNO (AVEC KEYCLOAK & ANTICIPATION DATABASE)
+  # Ce job s'exécute uniquement si le build et le lint sont validés (needs: [build, openapi-lint]).
+  # Il monte l'infrastructure requise (Keycloak, puis plus tard PostgreSQL),
+  # provisionne de façon dynamique et sécurisée les comptes de test,
+  # démarre l'API Node.js en tâche de fond et lance la suite de tests Bruno.
+  # =========================================================================
+  test-bruno:
+    name: API Integration Tests (Bruno)
+    runs-on: ubuntu-latest
+    needs: [build, openapi-lint]
+
+    # --- ANTICIPATION POSTGRESQL (SERVICE CONTAINER) ---
+    # Dès l'implémentation de la base PostgreSQL avec Prisma, décommentez ce bloc service.
+    # Il met à disposition une instance PostgreSQL isolée et prête pour les migrations :
+    # services:
+    #   postgres:
+    #     image: postgres:16-alpine
+    #     env:
+    #       POSTGRES_USER: devuser
+    #       POSTGRES_PASSWORD: devpassword
+    #       POSTGRES_DB: appdb
+    #     ports:
+    #       - 5432:5432
+    #     options: >-
+    #       --health-cmd pg_isready
+    #       --health-interval 10s
+    #       --health-timeout 5s
+    #       --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # -----------------------------------------------------------------------
+      # ÉTAPE 1 : DÉMARRAGE DE KEYCLOAK (VIA DOCKER COMPOSE)
+      # Lance le conteneur Keycloak avec l'import du Realm défini dans infra/keycloak/realm-export.json.
+      # Les identifiants administrateur sont injectés de manière sécurisée via GitHub Secrets.
+      # -----------------------------------------------------------------------
+      - name: Start Keycloak
+        run: |
+          docker compose up -d keycloak
+        env:
+          KEYCLOAK_ADMIN_USERNAME: admin
+          KEYCLOAK_ADMIN_PASSWORD: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
+
+      # -----------------------------------------------------------------------
+      # ÉTAPE 2 : INITIALISATION DYNAMIQUE DES UTILISATEURS DE TEST
+      # Exécute notre script TypeScript via tsx.
+      # Le script attend que Keycloak réponde, s'authentifie en admin et crée :
+      #   - 'user1' (email: user@example.com, rôle: user)
+      #   - 'admin' (email: admin@example.com, rôle: admin)
+      # Les mots de passe sont fournis par les secrets GitHub et ne sont jamais stockés dans Git.
+      # -----------------------------------------------------------------------
+      - name: Provision Keycloak test accounts
+        run: npm run setup:keycloak
+        env:
+          KEYCLOAK_URL: "http://localhost:8081"
+          KEYCLOAK_REALM: "project-raph-oilhan"
+          KEYCLOAK_ADMIN_USERNAME: "admin"
+          KEYCLOAK_ADMIN_PASSWORD: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
+          KEYCLOAK_USER_USERNAME: "user1"
+          KEYCLOAK_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+          KEYCLOAK_APP_ADMIN_USERNAME: "admin"
+          KEYCLOAK_APP_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
+
+      # -----------------------------------------------------------------------
+      # --- ANTICIPATION PRISMA : MIGRATIONS & SEED DE LA BASE ---
+      # Dès que Prisma et PostgreSQL sont en place, ces étapes initialisent le schéma
+      # et les données de référence requises par les tests Bruno.
+      # -----------------------------------------------------------------------
+      # - name: Run database migrations
+      #   run: npx prisma migrate deploy
+      #   env:
+      #     DATABASE_URL: "postgresql://devuser:devpassword@localhost:5432/appdb?schema=public"
+      #
+      # - name: Seed test database
+      #   run: npx prisma db seed
+      #   env:
+      #     DATABASE_URL: "postgresql://devuser:devpassword@localhost:5432/appdb?schema=public"
+
+      # -----------------------------------------------------------------------
+      # ÉTAPE 3 : DÉMARRAGE DE L'API EXPRESS EN ARRIÈRE-PLAN
+      # Lance le serveur sur le port 8080 et attend qu'il réponde sur /health.
+      # -----------------------------------------------------------------------
+      - name: Start Express API in background
+        run: |
+          npm run dev &
+          echo "Waiting for API to be healthy on http://localhost:8080/health ..."
+          timeout 30s bash -c 'until curl -sf http://localhost:8080/health > /dev/null; do sleep 1; done'
+        env:
+          PORT: 8080
+          KEYCLOAK_ISSUER_URL: "http://localhost:8081/realms/project-raph-oilhan"
+          KEYCLOAK_AUDIENCE: ""
+          # DATABASE_URL: "postgresql://devuser:devpassword@localhost:5432/appdb?schema=public"
+
+      # -----------------------------------------------------------------------
+      # ÉTAPE 4 : EXÉCUTION DES TESTS BRUNO
+      # Lance l'ensemble de la collection Bruno via scripts/run-api-tests.ts.
+      # Les mots de passe sont injectés dynamiquement depuis les secrets GitHub.
+      # Les requêtes d'authentification récupèrent les tokens et les propagent
+      # automatiquement aux requêtes suivantes via bru.setEnvVar().
+      # -----------------------------------------------------------------------
+      - name: Run Bruno API Tests
+        run: npm run test:api
+        env:
+          KEYCLOAK_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+          KEYCLOAK_APP_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
+
+      # -----------------------------------------------------------------------
+      # ÉTAPE 5 : NETTOYAGE DES CONTENEURS
+      # Assure l'arrêt et la suppression propre des conteneurs de test même en cas d'échec.
+      # -----------------------------------------------------------------------
+      - name: Teardown Services
+        if: always()
+        run: docker compose down -v

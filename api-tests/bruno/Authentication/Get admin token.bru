@@ -26,5 +26,13 @@ tests {
     expect(res.status).to.equal(200);
     expect(res.body.access_token).to.be.a("string");
     expect(res.body.token_type).to.equal("Bearer");
+    // Stocke dynamiquement le token dans l'environnement Bruno pour les requêtes suivantes
+    bru.setEnvVar("adminToken", res.body.access_token);
   });
+}
+
+script:post-response {
+  if (res.body && res.body.access_token) {
+    bru.setEnvVar("adminToken", res.body.access_token);
+  }
 }

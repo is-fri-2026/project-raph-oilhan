@@ -51,41 +51,79 @@ Reasons: see [docs/decisions/](docs/decisions/).
 ### Prerequisites
 - Node.js 22 or later
 - npm
+- Docker and Docker Compose
 
-### Configuration (secrets)
-Describe which environment variables / user secrets are needed and how to set them.
-**Never commit real secrets.**
+### 1. Configuration (secrets)
+Copy `.env.example` to `.env` and set local values :
 
-Copy `.env.example` to `.env` and set local values. The Keycloak administrator
-password is used only to start the local Keycloak container and must not be
-committed.
+```bash
+cp .env.example .env
+```
+*(Under Windows PowerShell: `Copy-Item .env.example .env`)*
 
-### Start
+**Never commit real secrets.** The `.env` file is ignored by Git.
+
+### 2. Install dependencies
 ```bash
 npm install
-npm run dev
 ```
 
-### Local Keycloak
-
-Start the local OIDC provider with Docker Compose:
+### 3. Start local Keycloak
+Start the local OIDC identity provider with Docker Compose:
 
 ```bash
 docker compose up -d keycloak
 ```
 
-Keycloak is available at `http://localhost:8081`. The named
-`keycloak-data` volume preserves the realm configuration between restarts.
-Create the `.env` file first, the client and roles will be charched by themselves from realm-export.json.
-You need to create the users by yourself for testing.
+Keycloak is available at `http://localhost:8081`. The named `keycloak-data` volume preserves the realm configuration between restarts.
 
-### Tests
+### 4. Provision test accounts
+Provision the test users in Keycloak (`user1` and `admin`) with the automated setup script:
+
 ```bash
-npm run build
-npm run lint:openapi
+npm run setup:keycloak
 ```
 
-Tests are done in the api-test folder. Read the Readme there to know more about it
+### 5. Start the API
+```bash
+npm run dev
+```
+The API is available at `http://localhost:8080` (health check at `http://localhost:8080/health`).
+
+### 6. Run tests locally
+
+- **Typecheck and build:**
+  ```bash
+  npm run build
+  ```
+- **Lint OpenAPI specification:**
+  ```bash
+  npm run lint:openapi
+  ```
+- **API integration tests (Bruno via CLI):**
+  Ensure Keycloak and the API are running, then run:
+  ```bash
+  npm run test:api
+  ```
+- **API integration tests (Bruno via GUI):**
+  1. Open Bruno and choose **Open Collection** > `api-tests/bruno/`.
+  2. Select the `local` environment.
+  3. Right-click on the collection and choose **Run**. Tokens are now automatically generated and shared between requests without manual copy/paste.
+
+## CI/CD Pipeline (GitHub Actions)
+
+The project includes an automated GitHub Actions pipeline (`.github/workflows/ci.yml`) triggered on pull requests, pushes to `main`, and manual execution (`workflow_dispatch`).
+
+### Prerequisites for CI
+Configure the following **Repository Secrets** in GitHub (**Settings > Secrets and variables > Actions > New repository secret**):
+- `KEYCLOAK_ADMIN_PASSWORD`: Keycloak bootstrap admin password.
+- `TEST_USER_PASSWORD`: Test user password (`user1`).
+- `TEST_ADMIN_PASSWORD`: Test application administrator password (`admin`).
+
+### Pipeline structure
+1. **Build & Typecheck:** Compiles TypeScript (`npm run build`) and prepares Prisma client generation.
+2. **Lint OpenAPI:** Validates `docs/api/openapi.yaml` with Redocly CLI.
+3. **API Integration Tests (Bruno):** Starts Keycloak, dynamically provisions ephemeral test accounts, starts the API, executes the Bruno collection via `@usebruno/cli`, and tears down containers cleanly. Anticipates PostgreSQL service container and Prisma migrations.
 
 ### Mobile app
 How to build and run it, and how to point it to a local or production API.
