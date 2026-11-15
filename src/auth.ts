@@ -3,7 +3,7 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import type { NextFunction, Request, Response } from "express";
 import type { User } from "./types.js";
-import { createUser, findUserByEmail, findUserByKeycloakSubject } from "./store.js";
+import { provisionUser } from "./store.js";
 import { HttpError } from "./errors.js";
 
 const keycloakIssuer = process.env.KEYCLOAK_ISSUER_URL;
@@ -40,7 +40,7 @@ async function requireKeycloakAuth(
           audience: keycloakAudience,
         })
       : await jwtVerify(token, keycloakJwks!, { issuer: keycloakIssuer });
-    const user = findOrCreateUserFromKeycloakClaims(verification.payload);
+    const user = await findOrCreateUserFromKeycloakClaims(verification.payload);
     request.user = user;
     return next();
   } catch (error) {
@@ -49,7 +49,7 @@ async function requireKeycloakAuth(
   }
 }
 
-function findOrCreateUserFromKeycloakClaims(claims: JWTPayload): User {
+async function findOrCreateUserFromKeycloakClaims(claims: JWTPayload): Promise<User> {
   if (typeof claims.sub !== "string") {
     throw new Error("Keycloak token has no subject");
   }
@@ -65,14 +65,7 @@ function findOrCreateUserFromKeycloakClaims(claims: JWTPayload): User {
 
   const roles = keycloakRoles(claims);
   const role = roles.includes("admin") ? "admin" : "user";
-  const user = findUserByKeycloakSubject(claims.sub) ?? findUserByEmail(email) ?? createUser(
-    email,
-    role,
-    claims.sub,
-  );
-  user.keycloakSubject = claims.sub;
-  user.role = role;
-  return user;
+  return provisionUser(email, role, claims.sub);
 }
 
 function keycloakRoles(claims: JWTPayload): string[] {

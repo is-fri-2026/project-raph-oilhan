@@ -68,29 +68,54 @@ cp .env.example .env
 npm install
 ```
 
-### 3. Start local Keycloak
-Start the local OIDC identity provider with Docker Compose:
+### 3. Start local PostgreSQL and Keycloak
+Start PostgreSQL and the local OIDC identity provider with Docker Compose:
 
 ```bash
-docker compose up -d keycloak
+docker compose up -d postgres keycloak
 ```
 
-Keycloak is available at `http://localhost:8081`. The named `keycloak-data` volume preserves the realm configuration between restarts.
+Keycloak is available at `http://localhost:8081` and PostgreSQL on port `5432`.
+The named volumes preserve data between restarts.
 
-### 4. Provision test accounts
+### 4. Apply database migrations and seed data
+
+```bash
+npx prisma migrate deploy
+npx prisma db seed
+```
+
+For a new local schema change, use `npx prisma migrate dev --name <description>`.
+
+If Prisma reports `P1000: Authentication failed`, check that the password in
+`DATABASE_URL` matches `POSTGRES_PASSWORD`. PostgreSQL stores the password in
+the named volume during its first initialization; changing `.env` later does
+not change that stored password. For a disposable local database, stop the
+stack and remove only the PostgreSQL volume:
+
+```powershell
+docker compose down
+docker volume rm project-raph-oilhan_postgres-data
+docker compose up -d postgres keycloak
+```
+
+Then repeat the migration and seed commands. Do not remove the volume if it
+contains data that must be kept.
+
+### 5. Provision test accounts
 Provision the test users in Keycloak (`user1` and `admin`) with the automated setup script:
 
 ```bash
 npm run setup:keycloak
 ```
 
-### 5. Start the API
+### 6. Start the API
 ```bash
 npm run dev
 ```
 The API is available at `http://localhost:8080` (health check at `http://localhost:8080/health`).
 
-### 6. Run tests locally
+### 7. Run tests locally
 
 - **Typecheck and build:**
   ```bash

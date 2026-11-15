@@ -28,12 +28,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # --- ANTICIPATION PRISMA ---
-      # Dès que Prisma sera initialisé (@prisma/client), décommentez l'étape ci-dessous.
-      # Pourquoi ? "npm run build" (tsc) compile le projet et nécessite que les types TypeScript
-      # générés par Prisma existent dans 'node_modules/@prisma/client'.
-      # - name: Generate Prisma Client
-      #   run: npx prisma generate
+      - name: Generate Prisma Client
+        run: npx prisma generate
 
       - name: Compile TypeScript
         run: npm run build
@@ -69,23 +65,20 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build, openapi-lint]
 
-    # --- ANTICIPATION POSTGRESQL (SERVICE CONTAINER) ---
-    # Dès l'implémentation de la base PostgreSQL avec Prisma, décommentez ce bloc service.
-    # Il met à disposition une instance PostgreSQL isolée et prête pour les migrations :
-    # services:
-    #   postgres:
-    #     image: postgres:16-alpine
-    #     env:
-    #       POSTGRES_USER: devuser
-    #       POSTGRES_PASSWORD: devpassword
-    #       POSTGRES_DB: appdb
-    #     ports:
-    #       - 5432:5432
-    #     options: >-
-    #       --health-cmd pg_isready
-    #       --health-interval 10s
-    #       --health-timeout 5s
-    #       --health-retries 5
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: devuser
+          POSTGRES_PASSWORD: devpassword
+          POSTGRES_DB: appdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout repository
@@ -132,20 +125,15 @@ jobs:
           KEYCLOAK_APP_ADMIN_USERNAME: "admin"
           KEYCLOAK_APP_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
 
-      # -----------------------------------------------------------------------
-      # --- ANTICIPATION PRISMA : MIGRATIONS & SEED DE LA BASE ---
-      # Dès que Prisma et PostgreSQL sont en place, ces étapes initialisent le schéma
-      # et les données de référence requises par les tests Bruno.
-      # -----------------------------------------------------------------------
-      # - name: Run database migrations
-      #   run: npx prisma migrate deploy
-      #   env:
-      #     DATABASE_URL: "postgresql://devuser:devpassword@localhost:5432/appdb?schema=public"
-      #
-      # - name: Seed test database
-      #   run: npx prisma db seed
-      #   env:
-      #     DATABASE_URL: "postgresql://devuser:devpassword@localhost:5432/appdb?schema=public"
+      - name: Run database migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: "postgresql://devuser:devpassword@localhost:5432/appdb?schema=public"
+
+      - name: Seed test database
+        run: npx prisma db seed
+        env:
+          DATABASE_URL: "postgresql://devuser:devpassword@localhost:5432/appdb?schema=public"
 
       # -----------------------------------------------------------------------
       # ÉTAPE 3 : DÉMARRAGE DE L'API EXPRESS EN ARRIÈRE-PLAN
@@ -160,7 +148,7 @@ jobs:
           PORT: 8080
           KEYCLOAK_ISSUER_URL: "http://localhost:8081/realms/project-raph-oilhan"
           KEYCLOAK_AUDIENCE: ""
-          # DATABASE_URL: "postgresql://devuser:devpassword@localhost:5432/appdb?schema=public"
+          DATABASE_URL: "postgresql://devuser:devpassword@localhost:5432/appdb?schema=public"
 
       # -----------------------------------------------------------------------
       # ÉTAPE 4 : EXÉCUTION DES TESTS BRUNO

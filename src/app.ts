@@ -12,7 +12,7 @@ if (!process.env.KEYCLOAK_ISSUER_URL) {
   throw new Error("KEYCLOAK_ISSUER_URL must be configured.");
 }
 
-await seedStore(); // Peuple la base de données avec un utilisateur admin et un utilisateur normal, ainsi qu'une alternative logicielle pour le test.
+await seedStore(); // Initialise les données de démonstration de façon idempotente.
 
 export const app = express();
 app.use(cors({ origin: true })); // A modifier lorsque l'on aura un frontend pour ne pas autoriser toutes les origines

@@ -2,23 +2,23 @@ import { Router } from "express";
 import { requireAuth } from "../auth.js";
 import { HttpError } from "../errors.js";
 import { idSchema, paginationSchema, userUpdateSchema } from "../schemas.js";
-import { findUser, findUserByEmail, publicUser, users } from "../store.js";
+import { deleteUser, findUser, findUserByEmail, listUsers, publicUser, updateUser } from "../store.js";
 import { currentUser, parse, requireAdmin } from "../middleware/validation.js";
 import { paginate } from "../utils/pagination.js";
 
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
 
-usersRouter.get("/", (request, response) => {
+usersRouter.get("/", async (request, response) => {
   requireAdmin(request);
   const { page, pageSize } = parse(paginationSchema, request.query);
-  response.json(paginate(users.map(publicUser), page, pageSize));
+  response.json(paginate((await listUsers()).map(publicUser), page, pageSize));
 });
 
-usersRouter.get("/:id", (request, response) => {
+usersRouter.get("/:id", async (request, response) => {
   const actor = currentUser(request);
   const id = parse(idSchema, request.params.id);
-  const target = findUser(id);
+  const target = await findUser(id);
   if (!target) throw new HttpError(404, "Not Found", "User was not found.");
   if (actor.role !== "admin" && actor.id !== id) {
     throw new HttpError(403, "Forbidden", "You can only access your own profile.");
@@ -29,7 +29,7 @@ usersRouter.get("/:id", (request, response) => {
 usersRouter.patch("/:id", async (request, response) => {
   const actor = currentUser(request);
   const id = parse(idSchema, request.params.id);
-  const target = findUser(id);
+  const target = await findUser(id);
   if (!target) throw new HttpError(404, "Not Found", "User was not found.");
   const dto = parse(userUpdateSchema, request.body);
   if (actor.role !== "admin" && actor.id !== id) {
@@ -38,22 +38,21 @@ usersRouter.patch("/:id", async (request, response) => {
   if (dto.role !== undefined && actor.role !== "admin") {
     throw new HttpError(403, "Forbidden", "Only administrators can change roles.");
   }
-  if (dto.email && dto.email !== target.email && findUserByEmail(dto.email)) {
+  if (dto.email && dto.email !== target.email && await findUserByEmail(dto.email)) {
     throw new HttpError(409, "Conflict", "Email is already registered.");
   }
-  if (dto.email) target.email = dto.email;
-  if (dto.role) target.role = dto.role;
-  response.json(publicUser(target));
+  const updated = await updateUser(id, dto);
+  response.json(publicUser(updated));
 });
 
-usersRouter.delete("/:id", (request, response) => {
+usersRouter.delete("/:id", async (request, response) => {
   const actor = currentUser(request);
   const id = parse(idSchema, request.params.id);
-  const index = users.findIndex((user) => user.id === id);
-  if (index < 0) throw new HttpError(404, "Not Found", "User was not found.");
+  const target = await findUser(id);
+  if (!target) throw new HttpError(404, "Not Found", "User was not found.");
   if (actor.role !== "admin" && actor.id !== id) {
     throw new HttpError(403, "Forbidden", "You can only delete your own account.");
   }
-  users.splice(index, 1);
+  await deleteUser(id);
   response.status(204).send();
 });
