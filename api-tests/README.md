@@ -6,14 +6,25 @@ open the collection directly in Bruno; do not copy them elsewhere.
 
 ## Run the collection
 
+### Option A: Via Command Line (Automated)
+
+1. Ensure Keycloak is running: `docker compose up -d keycloak`
+2. Initialize test accounts: `npm run setup:keycloak`
+3. Start the API: `npm run dev`
+4. Run all Bruno tests:
+   ```bash
+   npm run test:api
+   ```
+
+### Option B: Via Bruno GUI
+
 1. Start the API locally on `http://localhost:8080`.
-2. Start the Keycloak and create the users : user1, UserPassword123! and admin, AdminPassword123! and put all the other information (name, email,etc)
+2. Start Keycloak and initialize accounts with `npm run setup:keycloak`.
 3. In Bruno, choose **Open Collection** and select `api-tests/bruno/`.
 4. Select the `local` environment.
-5. Set the local Keycloak credentials in `bruno/environments/local.bru`.
-6. Run `Authentication/Get user token` and `Authentication/Get admin token`.
-7. Copy each `access_token` response into `userToken` and `adminToken` in `local.bru`.
-8. Right click on the collection then click on run.
+5. In `local.bru`, enter your local test credentials for `keycloakUserPassword` and `keycloakAdminPassword` (or pass them via variables).
+6. Right-click on the collection and click **Run**.
+   *(Tokens are automatically captured by `Authentication/Get user token` and `Get admin token` and propagated to all subsequent requests without manual copy/paste).*
 
 The collection covers:
 

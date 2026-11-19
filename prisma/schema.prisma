@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  user
+  admin
+}
+
+enum ModerationStatus {
+  pending
+  approved
+  rejected
+}
+
+model User {
+  id              Int                   @id @default(autoincrement())
+  keycloakSubject String?               @unique
+  email           String                @unique
+  role            UserRole              @default(user)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  alternatives    SoftwareAlternative[]
+  tasks           Task[]
+
+  @@index([role])
+}
+
+model Task {
+  id              Int                   @id @default(autoincrement())
+  name            String                @unique
+  description     String?
+  status          ModerationStatus      @default(approved)
+  submittedById   Int?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  submittedBy     User?                 @relation(fields: [submittedById], references: [id], onDelete: SetNull)
+  alternatives    SoftwareAlternative[]
+
+  @@index([status])
+}
+
+model SoftwareAlternative {
+  id              Int              @id @default(autoincrement())
+  submittedById   Int
+  taskId          Int
+  name            String
+  description     String
+  status          ModerationStatus @default(pending)
+  moderationReason String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  submittedBy     User             @relation(fields: [submittedById], references: [id], onDelete: Restrict)
+  task            Task             @relation(fields: [taskId], references: [id], onDelete: Restrict)
+
+  @@index([status, taskId])
+  @@index([submittedById, status])
+  @@unique([submittedById, name])
+}

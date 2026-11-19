@@ -9,10 +9,12 @@ import {
   paginationSchema,
 } from "../schemas.js";
 import {
-  allocateAlternativeId,
-  alternatives,
+  createAlternative,
+  deleteAlternative,
   findAlternative,
   isValidTask,
+  listAlternatives,
+  updateAlternative,
 } from "../store.js";
 import { currentUser, parse } from "../middleware/validation.js";
 import { paginate } from "../utils/pagination.js";
@@ -20,7 +22,7 @@ import { paginate } from "../utils/pagination.js";
 export const alternativesRouter = Router();
 
 // Keep the collection public while identifying authenticated owners for pending alternatives.
-alternativesRouter.get("/", optionalAuth, (request, response) => {
+alternativesRouter.get("/", optionalAuth, async (request, response) => {
   const { page, pageSize } = parse(paginationSchema, request.query);
   const taskId = request.query.taskId === undefined
     ? undefined
@@ -29,7 +31,7 @@ alternativesRouter.get("/", optionalAuth, (request, response) => {
     ? undefined
     : parse(z.enum(["pending", "approved", "rejected"]), request.query.status);
   const user = request.user;
-  const visible = alternatives.filter((alternative) => {
+  const visible = (await listAlternatives()).filter((alternative) => {
     const owns = alternative.submittedBy === user?.id;
     const canSee = user?.role === "admin"
       ? status === undefined || alternative.status === status
@@ -41,56 +43,47 @@ alternativesRouter.get("/", optionalAuth, (request, response) => {
   response.json(paginate(visible, page, pageSize));
 });
 
-alternativesRouter.get("/:id", (request, response) => {
-  const alternative = findAlternative(parse(idSchema, request.params.id));
+alternativesRouter.get("/:id", async (request, response) => {
+  const alternative = await findAlternative(parse(idSchema, request.params.id));
   if (!alternative || alternative.status !== "approved") {
     throw new HttpError(404, "Not Found", "Software alternative was not found.");
   }
   response.json(alternative);
 });
 
-alternativesRouter.post("/", requireAuth, (request, response) => {
+alternativesRouter.post("/", requireAuth, async (request, response) => {
   const user = currentUser(request);
   const dto = parse(alternativeCreateSchema, request.body);
-  if (!isValidTask(dto.taskId)) throw new HttpError(404, "Not Found", "Task was not found.");
-  const alternative = {
-    id: allocateAlternativeId(),
-    submittedBy: user.id,
-    ...dto,
-    status: "pending" as const,
-    moderationReason: null,
-    createdAt: new Date().toISOString(),
-  };
-  alternatives.push(alternative);
+  if (!await isValidTask(dto.taskId)) throw new HttpError(404, "Not Found", "Task was not found.");
+  const alternative = await createAlternative({ submittedBy: user.id, ...dto });
   response.location(`/api/software-alternatives/${alternative.id}`).status(201).json(alternative);
 });
 
-alternativesRouter.patch("/:id", requireAuth, (request, response) => {
+alternativesRouter.patch("/:id", requireAuth, async (request, response) => {
   const actor = currentUser(request);
-  const alternative = findAlternative(parse(idSchema, request.params.id));
+  const alternative = await findAlternative(parse(idSchema, request.params.id));
   if (!alternative) throw new HttpError(404, "Not Found", "Software alternative was not found.");
   const dto = parse(alternativeUpdateSchema, request.body);
   const ownsPending = alternative.submittedBy === actor.id && alternative.status === "pending";
   if (actor.role !== "admin" && !ownsPending) {
     throw new HttpError(403, "Forbidden", "Only the submitter of a pending alternative can update it.");
   }
-  if (dto.taskId !== undefined && !isValidTask(dto.taskId)) {
+  if (dto.taskId !== undefined && !await isValidTask(dto.taskId)) {
     throw new HttpError(404, "Not Found", "Task was not found.");
   }
   if (actor.role !== "admin" && (dto.status !== undefined || dto.moderationReason !== undefined)) {
     throw new HttpError(403, "Forbidden", "Only administrators can moderate alternatives.");
   }
-  Object.assign(alternative, dto);
-  response.json(alternative);
+  response.json(await updateAlternative(alternative.id, dto));
 });
 
-alternativesRouter.delete("/:id", requireAuth, (request, response) => {
+alternativesRouter.delete("/:id", requireAuth, async (request, response) => {
   const actor = currentUser(request);
-  const alternative = findAlternative(parse(idSchema, request.params.id));
+  const alternative = await findAlternative(parse(idSchema, request.params.id));
   if (!alternative) throw new HttpError(404, "Not Found", "Software alternative was not found.");
   if (actor.role !== "admin" && !(alternative.submittedBy === actor.id && alternative.status === "pending")) {
     throw new HttpError(403, "Forbidden", "Only the submitter of a pending alternative can delete it.");
   }
-  alternatives.splice(alternatives.indexOf(alternative), 1);
+  await deleteAlternative(alternative.id);
   response.status(204).send();
 });
