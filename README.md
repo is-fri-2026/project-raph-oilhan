@@ -67,7 +67,10 @@ cp .env.example .env
 ```bash
 npm install
 ```
-
+And then build the client prisma (prisma generate)
+```bash
+npm run db:generate
+``` 
 ### 3. Start local PostgreSQL and Keycloak
 Start PostgreSQL and the local OIDC identity provider with Docker Compose:
 
