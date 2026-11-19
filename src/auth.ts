@@ -8,8 +8,11 @@ import { HttpError } from "./errors.js";
 
 const keycloakIssuer = process.env.KEYCLOAK_ISSUER_URL;
 const keycloakAudience = process.env.KEYCLOAK_AUDIENCE;
+const keycloakJwksUrl = process.env.KEYCLOAK_JWKS_URL;
 const keycloakJwks = keycloakIssuer
-  ? createRemoteJWKSet(new URL(`${keycloakIssuer}/protocol/openid-connect/certs`))
+  ? createRemoteJWKSet(new URL(
+      keycloakJwksUrl ?? `${keycloakIssuer}/protocol/openid-connect/certs`,
+    ))
   : undefined;
 
 export function requireAuth(

@@ -135,6 +135,21 @@ The API is available at `http://localhost:8080` (health check at `http://localho
   2. Select the `local` environment.
   3. Right-click on the collection and choose **Run**. Tokens are now automatically generated and shared between requests without manual copy/paste.
 
+## Running on docker
+
+```bash
+docker compose up -d
+```
+
+This command build the images described in the Dockerfile. It use it for running the api, in addition to the keycloak and the postgres.
+
+If you make change in the source code and you want to run the code on docker, be sure to build fresh images with 
+
+```bash
+docker compose build --no-cache 
+```
+
+
 ## CI/CD Pipeline (GitHub Actions)
 
 The project includes an automated GitHub Actions pipeline (`.github/workflows/ci.yml`) triggered on pull requests, pushes to `main`, and manual execution (`workflow_dispatch`).
