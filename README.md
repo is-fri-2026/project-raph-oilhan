@@ -42,7 +42,7 @@ flowchart LR
 | Database / ORM | PostgreSQL + Prisma |
 | Mobile | To be decided |
 | Cloud | GitHub Actions + GHCR + Render |
-| LLM provider | To be decided |
+| LLM provider | Google Gemini API |
 
 Reasons: see [docs/decisions/](docs/decisions/).
 

@@ -27,16 +27,19 @@ Create a GitHub issue for each story (use the "User story" issue template) and l
 | 5 | As an admin, I want to approve or reject submitted alternatives, tasks, devices and compatibility information, so that visitors only see reliable content. | Must | midterm | #8 |
 | 6 | As an admin, I want to manage users and their roles, so that access to administration features is controlled. | Must | midterm | #9 |
 | 7 | As a user, I want to rate software alternatives, so that I can help others find the best alternatives. | Must | midterm | #10 |
-| 8 | As a user, I want to filter alternatives by resource consumption, operating system or privacy features, so that I can refine my search. | Should | final | #12 |
-| 9 | As a visitor, I want to view the details of an alternative, so that I can check its compatibility and limitations before using it. | Could | final |  |
-| 10 | As a user, I want to report outdated or misleading information, so that the platform can remain reliable. | Could | final |  |
-| 11 | As a user, I want to receive notifications when an alternative is updated or my submission is moderated, so that I know when to take action. | Could | final |  |
-| 12 | As a user, I want to scan my device model with my phone camera, so that I can find compatible alternatives without manually entering its details. | Could | final |  |
-| 13 | As a user, I want to compare two alternatives side by side, so that I can choose the most suitable one for my device and task. | Could | final |  |
-| 14 | The platform will install software automatically on a user's device. | Won't |
-| 15 | The platform will replace a device's operating system or diagnose every hardware problem. | Won't |
-| 16 | The platform will guarantee the long-term security, maintenance or availability of third-party software. | Won't |
-| 17 | The platform will support every operating system and hardware configuration in the first version. | Won't |
+| 8 | As a user, I want to describe my need in natural language, so that I can find relevant software alternatives without constructing filters manually. | Must | final |  |
+| 9 | As a user, I want an AI agent to prepare and submit a software recommendation through a multi-step workflow, so that I can add a complete recommendation without manually coordinating the tasks and devices. | Must | final |  |
+| 10-a | As a user, I want to scan my device model with my phone camera, so that I can find compatible alternatives without manually entering its details. | Must | final |  |
+| 10-b | As a user, I want to receive notifications when new software alternatives are available, based on my devices and the tasks I like. | Must | final |  |
+| 11 | As a user, I want to filter alternatives by resource consumption, operating system or privacy features, so that I can refine my search. | Should | final | #12 |
+| 12 | As a visitor, I want to view the details of an alternative, so that I can check its compatibility and limitations before using it. | Could | final |  |
+| 13 | As a user, I want to report outdated or misleading information, so that the platform can remain reliable. | Could | final |  |
+| 14 | As a user, I want to receive notifications when an alternative is updated or my submission is moderated, so that I know when to take action. | Could | final |  |
+| 15 | As a user, I want to compare two alternatives side by side, so that I can choose the most suitable one for my device and task. | Could | final |  |
+| 16 | The platform will install software automatically on a user's device. | Won't |
+| 17 | The platform will replace a device's operating system or diagnose every hardware problem. | Won't |
+| 18 | The platform will guarantee the long-term security, maintenance or availability of third-party software. | Won't |
+| 19 | The platform will support every operating system and hardware configuration in the first version. | Won't |
 
 ### Acceptance criteria
 
@@ -99,11 +102,59 @@ Create a GitHub issue for each story (use the "User story" issue template) and l
 - **When** the rating request is sent
 - **Then** the API rejects the request with a validation error and does not create a duplicate rating.
 
+#### Story 8 — Search with a natural-language request
+- **Given** a user describes a software need in natural language
+- **When** the LLM processes the request
+- **Then** it returns a validated filter containing only the recognized task, device, operating system and preferences.
+- **Given** the filter is valid
+- **When** it is sent to the API
+- **Then** the platform displays approved alternatives matching the filter.
+- **Given** the request contains unknown or ambiguous information
+- **When** the LLM cannot map it safely
+- **Then** the platform asks the user to clarify instead of inventing a value.
+
+#### Story 9 — Prepare and submit a software recommendation with an agent
+- **Given** an authenticated user asks the agent to add a software recommendation
+- **When** the agent searches for matching tasks and devices and prepares the recommendation
+- **Then** it displays the existing records it found, identifies any missing records and proposes a complete summary before any write.
+- **Given** the agent has prepared a recommendation summary
+- **When** the user confirms the submission
+- **Then** the agent creates the pending recommendation using the user’s permissions and the user is shown the resulting submission status.
+- **Given** the agent requests a write or destructive action
+- **When** the user has not confirmed it
+- **Then** no write is performed and the agent asks the user for explicit confirmation.
+
+#### Story 10-a — Scan a device model with the phone camera
+- **Given** a user opens the camera-based device search
+- **When** a readable device model is detected
+- **Then** the application asks the user to confirm it, then displays compatible approved alternatives.
+- **Given** no model is detected or no device matches
+- **When** recognition fails
+- **Then** the application offers another photo or manual model entry.
+
+#### Story 10-b — Receive notifications for relevant new alternatives
+- **Given** an authenticated user has registered devices and followed tasks
+- **When** an approved alternative matches their preferences
+- **Then** the platform sends one notification with the alternative details and a link.
+- **Given** an alternative does not match the user's preferences or is not approved
+- **When** it becomes available
+- **Then** no notification is sent.
+- **Given** the user changes notification preferences
+- **When** a preference is saved
+- **Then** future notifications respect it.
+
+
+
 
 ## Mobile app use case
 <!-- What will users do with the mobile app, and why on a phone? -->
 
-The mobile application allows users to search for software alternatives while they are using or diagnosing an old device. A user may discover that a task is no longer supported and use their phone to search for compatible alternatives, even when the old device cannot access the Internet. The application can cache recently downloaded recommendations so that they remain available in low-connectivity situations. A connected user can also submit a rating.
+The mobile application allows users to find compatible software alternatives while they are using or diagnosing an old device. The phone is useful because it is available next to the device, can use the camera and can send notifications. We will choose one of the following two mobile features later:
+
+- **Option 9-a — Assisted device model search:** the user photographs the device label, the application extracts or displays the detected text, and the user confirms or corrects the model before viewing compatible alternatives. Manual entry remains available if recognition fails.
+- **Option 9-b — Relevant notifications:** the user registers devices and follows tasks, then receives a notification when a new approved alternative matches their preferences. Notification settings can be changed in the application.
+
+In both cases, the application can cache recently downloaded recommendations for low-connectivity situations, and a connected user can submit a rating.
 
 ## AI features
 - **LLM feature:**
@@ -116,8 +167,8 @@ The user can ask the agent to add a new software recommendation. The agent first
 ## Plan
 | Milestone | Stories / features |
 |-----------|--------------------|
-| Midterm (week 7) | 1-7 |
-| Final (week 12) | 8-13 |
+| Midterm (week 8) | 1-8 |
+| Final (week 12) | 9-13 |
 
 ## Risks
 
