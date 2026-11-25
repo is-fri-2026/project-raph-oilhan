@@ -1,5 +1,7 @@
 // This file contains the custom error types and utility functions for handling HTTP errors in the application homogeneously.
 
+import { ApplicationError } from "../../application/errors.js";
+
 export class HttpError extends Error {
   constructor(
     public readonly status: number,
@@ -26,6 +28,25 @@ export function problemDetails(error: unknown): {
       status: error.status,
       detail: error.message,
       ...(error.errors ? { errors: error.errors } : {}),
+    };
+  }
+
+  if (error instanceof ApplicationError) {
+    const status = error.code === "FORBIDDEN"
+      ? 403
+      : error.code === "CONFLICT"
+        ? 409
+        : 404;
+    const title = status === 403
+      ? "Forbidden"
+      : status === 409
+        ? "Conflict"
+        : "Not Found";
+    return {
+      type: `https://httpstatuses.com/${status}`,
+      title,
+      status,
+      detail: error.message,
     };
   }
 

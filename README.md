@@ -85,6 +85,13 @@ npx prisma migrate deploy
 npx prisma db seed
 ```
 
+If you want to reset the db for running the tests again :
+WARNING : all the data will be lost 
+```bash
+npx prisma migrate reset
+```
+An other solutions for the test would be to run them in another database test
+
 For a new local schema change, use `npx prisma migrate dev --name <description>`.
 
 If Prisma reports `P1000: Authentication failed`, check that the password in

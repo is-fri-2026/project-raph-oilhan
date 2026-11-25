@@ -37,9 +37,22 @@ flowchart TD
     Clients[Web / Mobile / Agent] --> Presentation
     Presentation[Presentation layer\nREST endpoints, DTOs, validation] --> Application
     Application[Application layer\nUse cases, services, authorization policies] --> Domain
-    Domain[Domain layer\nEntities, statuses, business rules] --> Infrastructure
-    Infrastructure[ORM] --> DB[(Managed database)]
+    Domain[Domain layer\nEntities, statuses, business rules]
+    Application --> Port[Repository interfaces]
+    Infrastructure[Infrastructure layer\nRepository implementations] -. implements .-> Port
+    Infrastructure --> ORM --> DB[(Managed database)]
 ```
+
+    ### Source layout
+
+    - `src/presentation/http/` contains routes, authentication middleware, validation,
+      HTTP errors and DTO conversion.
+    - `src/application/` contains use-case services, repository ports and application errors.
+    - `src/domain/` contains domain types and business policies.
+    - `src/infrastructure/prisma/` contains the Prisma client and repository implementations.
+    - `src/app.ts` composes the layers; `src/server.ts` starts the HTTP server.
+    - `prisma/seed.ts` initializes demonstration data explicitly; starting the API does not
+      run the seed.
 
 ### Presentation layer
 
