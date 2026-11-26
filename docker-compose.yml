@@ -15,6 +15,71 @@ services:
       timeout: 5s
       retries: 10
 
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  seed:
+    build:
+      context: .
+      target: seed
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  keycloak-setup:
+    build:
+      context: .
+      target: keycloak-setup
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: project-raph-oilhan
+      KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_USER_USERNAME: ${KEYCLOAK_USER_USERNAME}
+      KEYCLOAK_USER_PASSWORD: ${KEYCLOAK_USER_PASSWORD}
+      KEYCLOAK_APP_ADMIN_USERNAME: ${KEYCLOAK_APP_ADMIN_USERNAME}
+      KEYCLOAK_APP_ADMIN_PASSWORD: ${KEYCLOAK_APP_ADMIN_PASSWORD}
+    depends_on:
+      keycloak:
+        condition: service_started
+
+  api:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL}
+      KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/project-raph-oilhan/protocol/openid-connect/certs
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE}
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      keycloak-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.3.3
     command: start-dev --import-realm
@@ -23,9 +88,24 @@ services:
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_HOSTNAME: http://localhost:8081
     volumes:
       - keycloak-data:/opt/keycloak/data
       - ./infra/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+
+  api-tests:
+    profiles: ["test"]
+    build:
+      context: .
+      target: api-tests
+    environment:
+      KEYCLOAK_USER_PASSWORD: ${KEYCLOAK_USER_PASSWORD}
+      KEYCLOAK_APP_ADMIN_PASSWORD: ${KEYCLOAK_APP_ADMIN_PASSWORD}
+      BRUNO_BASE_URL: http://api:8080
+      BRUNO_KEYCLOAK_URL: http://keycloak:8080
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   postgres-data:
