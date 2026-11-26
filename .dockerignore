@@ -3,6 +3,5 @@ dist
 .git
 .env
 coverage
-api-tests
 docs
 mobile

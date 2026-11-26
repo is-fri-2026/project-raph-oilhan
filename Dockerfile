@@ -24,6 +24,17 @@ COPY tsconfig.json ./
 COPY src ./src
 CMD ["npm", "run", "db:seed"]
 
+FROM dependencies AS keycloak-setup
+
+COPY scripts ./scripts
+CMD ["npm", "run", "setup:keycloak"]
+
+FROM dependencies AS api-tests
+
+COPY scripts ./scripts
+COPY api-tests ./api-tests
+CMD ["npm", "run", "test:api"]
+
 FROM node:22-alpine AS runtime
 
 WORKDIR /app
