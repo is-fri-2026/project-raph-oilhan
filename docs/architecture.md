@@ -5,24 +5,30 @@
 ```mermaid
 flowchart LR
     subgraph Clients
-        Web[Web app]
-        Mobile[Mobile app]
+        Web[React + Vite web app]
+        Mobile[Mobile To be decided]
         AgentUI[Agent chat / MCP client]
     end
     subgraph Cloud
-        API[REST API]
-        Agent[Agent]
-        DB[(Managed database)]
+        API[Node.js + Express REST API]
+        Agent[AI agent orchestration]
+        Auth[Keycloak OIDC]
+        ORM[Prisma ORM]
+        DB[(PostgreSQL)]
     end
-    LLM[LLM provider]
+    LLM[Google Gemini API]
 
-    Web -->|HTTPS| API
+    Web -->|HTTPS + bearer token| API
     Mobile -->|HTTPS + bearer token| API
     AgentUI --> Agent
     Agent -->|tools, user's token| API
-    Agent --> LLM
-    API --> DB
+    Web -->|OIDC login| Auth
+    Mobile -->|OIDC login| Auth
+    API -->|validate bearer tokens| Auth
+    API --> ORM
+    ORM --> DB
     API --> LLM
+    Agent --> LLM
 ```
 
 Update this diagram as the system evolves.
