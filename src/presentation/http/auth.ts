@@ -7,7 +7,7 @@ import { HttpError } from "./errors.js";
 import type { UsersService } from "../../application/services/users-service.js";
 
 const keycloakIssuer = process.env.KEYCLOAK_ISSUER_URL;
-const keycloakAudience = process.env.KEYCLOAK_AUDIENCE;
+const keycloakAudience = process.env.KEYCLOAK_AUDIENCE || "project-api";
 const keycloakJwksUrl = process.env.KEYCLOAK_JWKS_URL;
 const keycloakJwks = keycloakIssuer
   ? createRemoteJWKSet(new URL(

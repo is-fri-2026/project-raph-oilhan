@@ -17,8 +17,34 @@ if (!process.env.KEYCLOAK_ISSUER_URL) {
   throw new Error("KEYCLOAK_ISSUER_URL must be configured.");
 }
 
+const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? "http://localhost:5173")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+if (allowedOrigins.length === 0 || allowedOrigins.includes("*")) {
+  throw new Error("CORS_ALLOWED_ORIGINS must contain explicit origins and cannot include '*'.");
+}
+
+for (const origin of allowedOrigins) {
+  const parsedOrigin = new URL(origin);
+  if (
+    parsedOrigin.origin !== origin
+    || (parsedOrigin.protocol !== "https:"
+      && !["localhost", "127.0.0.1"].includes(parsedOrigin.hostname))
+  ) {
+    throw new Error(`CORS origin must be an exact HTTPS origin (HTTP is allowed only on localhost): ${origin}`);
+  }
+}
+
 export const app = express();
-app.use(cors({ origin: true })); // A modifier lorsque l'on aura un frontend pour ne pas autoriser toutes les origines
+app.use(cors({
+  origin(origin, callback) {
+    callback(null, origin !== undefined && allowedOrigins.includes(origin) ? origin : false);
+  },
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Authorization", "Content-Type"],
+}));
 app.use(express.json({ limit: "1mb" }));
 
 const usersService = new UsersService(new PrismaUserRepository());

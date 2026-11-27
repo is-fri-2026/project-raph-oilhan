@@ -1,5 +1,5 @@
 /**
- * Script d'initialisation des utilisateurs de test dans Keycloak.
+ * Configure les clients OIDC puis, en local/CI, les utilisateurs de test Keycloak.
  * 
  * Ce script est conçu pour être exécuté en environnement local et en CI GitHub Actions.
  * Il configure de façon dynamique et reproductible les comptes nécessaires aux tests d'intégration Bruno :
@@ -16,6 +16,17 @@ import "dotenv/config";
 
 const KEYCLOAK_URL = process.env.KEYCLOAK_URL || "http://localhost:8081";
 const REALM_NAME = process.env.KEYCLOAK_REALM || "project-raph-oilhan";
+const configuredWebOrigin = new URL(process.env.WEB_ORIGIN || "http://localhost:5173");
+if (
+  configuredWebOrigin.pathname !== "/"
+  || configuredWebOrigin.search
+  || configuredWebOrigin.hash
+  || (configuredWebOrigin.protocol !== "https:"
+    && !["localhost", "127.0.0.1"].includes(configuredWebOrigin.hostname))
+) {
+  throw new Error("WEB_ORIGIN must be an exact HTTPS origin (HTTP is allowed only on localhost).");
+}
+const WEB_ORIGIN = configuredWebOrigin.origin;
 
 // Identifiants administrateur Keycloak (bootstrap admin)
 const KC_BOOTSTRAP_ADMIN_USER = process.env.KEYCLOAK_ADMIN_USERNAME || "admin";
@@ -29,10 +40,16 @@ const TEST_USER_PASSWORD = process.env.KEYCLOAK_USER_PASSWORD;
 const TEST_ADMIN_USERNAME = process.env.KEYCLOAK_APP_ADMIN_USERNAME || "admin";
 const TEST_ADMIN_EMAIL = process.env.KEYCLOAK_APP_ADMIN_EMAIL || "admin@example.com";
 const TEST_ADMIN_PASSWORD = process.env.KEYCLOAK_APP_ADMIN_PASSWORD;
+const CLIENTS_ONLY = process.argv.includes("--clients-only");
 
-if (!KC_BOOTSTRAP_ADMIN_PASS || !TEST_USER_PASSWORD || !TEST_ADMIN_PASSWORD) {
+if (
+  !KC_BOOTSTRAP_ADMIN_PASS
+  || (!CLIENTS_ONLY && (!TEST_USER_PASSWORD || !TEST_ADMIN_PASSWORD))
+) {
   throw new Error(
-    "[setup-keycloak] Variables requises manquantes : veuillez définir KEYCLOAK_ADMIN_PASSWORD, KEYCLOAK_USER_PASSWORD et KEYCLOAK_APP_ADMIN_PASSWORD (dans le fichier .env en local ou via GitHub Secrets en CI).",
+    CLIENTS_ONLY
+      ? "[setup-keycloak] KEYCLOAK_ADMIN_PASSWORD est requis."
+      : "[setup-keycloak] Variables requises manquantes : veuillez définir KEYCLOAK_ADMIN_PASSWORD, KEYCLOAK_USER_PASSWORD et KEYCLOAK_APP_ADMIN_PASSWORD (dans le fichier .env en local ou via GitHub Secrets en CI).",
   );
 }
 
@@ -43,6 +60,25 @@ interface KeycloakRole {
   composite?: boolean;
   clientRole?: boolean;
   containerId?: string;
+}
+
+interface KeycloakClient {
+  id: string;
+  clientId: string;
+  redirectUris?: string[];
+  webOrigins?: string[];
+  protocolMappers?: KeycloakProtocolMapper[];
+  [key: string]: unknown;
+}
+
+interface KeycloakProtocolMapper {
+  id?: string;
+  name: string;
+  protocol?: string;
+  protocolMapper?: string;
+  consentRequired?: boolean;
+  config?: Record<string, string>;
+  [key: string]: unknown;
 }
 
 /**
@@ -107,6 +143,115 @@ async function getRealmRole(token: string, roleName: string): Promise<KeycloakRo
   }
 
   return (await response.json()) as KeycloakRole;
+}
+
+async function findClient(token: string, clientId: string): Promise<KeycloakClient | undefined> {
+  const searchUrl = `${KEYCLOAK_URL}/admin/realms/${REALM_NAME}/clients?clientId=${encodeURIComponent(clientId)}`;
+  const searchResponse = await fetch(searchUrl, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!searchResponse.ok) {
+    throw new Error(`[setup-keycloak] Impossible de lire le client '${clientId}' : ${await searchResponse.text()}`);
+  }
+
+  const clients = (await searchResponse.json()) as KeycloakClient[];
+  return clients.find((candidate) => candidate.clientId === clientId);
+}
+
+async function updateClient(
+  token: string,
+  client: KeycloakClient,
+  updates: Partial<KeycloakClient>,
+): Promise<void> {
+  const updateResponse = await fetch(
+    `${KEYCLOAK_URL}/admin/realms/${REALM_NAME}/clients/${client.id}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ...client, ...updates }),
+    },
+  );
+  if (!updateResponse.ok) {
+    throw new Error(`[setup-keycloak] Impossible de mettre à jour le client '${client.clientId}' : ${await updateResponse.text()}`);
+  }
+}
+
+function withApiAudienceMapper(mappers: KeycloakProtocolMapper[] = []) {
+  const existing = mappers.find((mapper) => mapper.name === "project-api-audience");
+  const mapper: KeycloakProtocolMapper = {
+    ...(existing ?? {}),
+    name: "project-api-audience",
+    protocol: "openid-connect",
+    protocolMapper: "oidc-audience-mapper",
+    consentRequired: false,
+    config: {
+      ...(existing?.config ?? {}),
+      "included.client.audience": "project-api",
+      "id.token.claim": "false",
+      "access.token.claim": "true",
+      "introspection.token.claim": "true",
+    },
+  };
+  return [...mappers.filter((candidate) => candidate.name !== mapper.name), mapper];
+}
+
+async function configureOidcClients(token: string): Promise<void> {
+  const apiClient = await findClient(token, "project-api");
+  if (!apiClient) {
+    throw new Error(`[setup-keycloak] Client 'project-api' introuvable dans le realm '${REALM_NAME}'.`);
+  }
+  await updateClient(token, apiClient, {
+    protocolMappers: withApiAudienceMapper(apiClient.protocolMappers),
+  });
+
+  const webClient = await findClient(token, "project-web");
+  const webClientSettings: Omit<KeycloakClient, "id"> = {
+    clientId: "project-web",
+    name: "Project web SPA",
+    rootUrl: WEB_ORIGIN,
+    baseUrl: `${WEB_ORIGIN}/`,
+    enabled: true,
+    protocol: "openid-connect",
+    publicClient: true,
+    standardFlowEnabled: true,
+    implicitFlowEnabled: false,
+    directAccessGrantsEnabled: false,
+    serviceAccountsEnabled: false,
+    frontchannelLogout: true,
+    redirectUris: [`${WEB_ORIGIN}/`, `${WEB_ORIGIN}/silent-check-sso.html`],
+    webOrigins: [WEB_ORIGIN],
+    attributes: {
+      "pkce.code.challenge.method": "S256",
+      "post.logout.redirect.uris": `${WEB_ORIGIN}/`,
+    },
+    fullScopeAllowed: true,
+    defaultClientScopes: ["web-origins", "acr", "roles", "profile", "basic", "email"],
+  };
+  if (webClient) {
+    await updateClient(token, webClient, {
+      ...webClientSettings,
+      protocolMappers: withApiAudienceMapper(webClient.protocolMappers),
+    });
+  } else {
+    const createResponse = await fetch(`${KEYCLOAK_URL}/admin/realms/${REALM_NAME}/clients`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...webClientSettings,
+        protocolMappers: withApiAudienceMapper(),
+      }),
+    });
+    if (!createResponse.ok) {
+      throw new Error(`[setup-keycloak] Impossible de créer le client 'project-web' : ${await createResponse.text()}`);
+    }
+  }
+  console.log(`[setup-keycloak] Client SPA configuré pour ${WEB_ORIGIN} avec PKCE et audience project-api.`);
 }
 
 /**
@@ -260,6 +405,15 @@ async function main(): Promise<void> {
   try {
     await waitForKeycloak();
     const token = await getAdminToken();
+    await configureOidcClients(token);
+    if (CLIENTS_ONLY) {
+      console.log("[setup-keycloak] Clients OIDC configurés; aucun compte de test modifié.");
+      return;
+    }
+
+    if (!TEST_USER_PASSWORD || !TEST_ADMIN_PASSWORD) {
+      throw new Error("[setup-keycloak] Les mots de passe des comptes de test sont requis.");
+    }
 
     // Récupération des rôles existants dans le Realm
     const userRole = await getRealmRole(token, "user");

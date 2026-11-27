@@ -2,13 +2,14 @@
 
 ## Components
 
-The backend API is implemented. The web, mobile and AI agent components below describe
-the target architecture; they are not implemented in this repository yet.
+The backend API and a minimal React + Vite web client are implemented. The mobile
+and AI agent components below describe the target architecture; they are not
+implemented in this repository yet.
 
 ```mermaid
 flowchart LR
     subgraph Clients
-        Web[React + Vite web app]
+        Web[React + Vite web app - web/]
         Mobile[Mobile app - planned]
         AgentUI[Agent chat / MCP client - planned]
     end
@@ -80,6 +81,7 @@ src/
 └── infrastructure/
     └── prisma/                    # Prisma client and repository implementations
 
+web/                                # React + Vite client; OpenAPI-generated API types
 prisma/                             # Database schema, migrations and seed data
 docs/api/openapi.yaml               # REST API contract
 api-tests/bruno/                    # HTTP integration tests
@@ -118,6 +120,25 @@ models and keeps persistence-specific code outside the application and domain la
 
 Errors are passed to the central Express error handler in `src/app.ts`, which converts
 HTTP and application errors into Problem Details responses.
+
+### Web client
+
+The web client is deliberately organized as a single small React application rather
+than a layered frontend framework. `web/src/App.tsx` contains the current screens and
+interactions, `web/src/api.ts` is the typed API adapter, and `web/src/auth.ts` integrates
+the public `project-web` Keycloak OIDC client with Authorization Code + PKCE. A silent
+SSO check lets public pages load anonymously and recognizes an existing Keycloak
+session without forcing the visitor through a login page. API requests use a bearer
+token and target the `project-api` audience; the API checks signature, issuer, expiry
+and audience.
+
+The API enables CORS only for the exact HTTPS origins listed in
+`CORS_ALLOWED_ORIGINS` (HTTP is accepted for localhost development); it does not enable
+credentialed cross-origin cookies. `WEB_ORIGIN` configures the Keycloak SPA callback,
+and `VITE_API_URL` configures the API origin in the browser. The API types are
+regenerated from `docs/api/openapi.yaml` during the web build. Unsupported API
+operations and fields are shown as disabled controls rather than simulated in the
+browser.
 
 ## Authentication & authorization
 

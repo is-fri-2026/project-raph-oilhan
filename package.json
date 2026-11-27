@@ -13,6 +13,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "lint:openapi": "npx --yes @redocly/cli@latest lint docs/api/openapi.yaml",
     "setup:keycloak": "tsx scripts/setup-keycloak-users.ts",
+    "setup:keycloak-clients": "tsx scripts/setup-keycloak-users.ts --clients-only",
     "test:api": "tsx scripts/run-api-tests.ts"
   },
   "prisma": {
