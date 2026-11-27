@@ -1,7 +1,11 @@
 // HTTP adapter for user routes: validation, service calls, and response DTOs.
 import { Router } from "express";
 import type { RequestHandler } from "express";
-import { idSchema, paginationSchema, userUpdateSchema } from "../schemas.js";
+import {
+  idSchema,
+  paginationSchema,
+  userUpdateSchema,
+} from "../../dto/request-dtos.js";
 import { currentUser, parse } from "../middleware/validation.js";
 import { UsersService } from "../../../application/services/users-service.js";
 import {

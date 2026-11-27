@@ -1,12 +1,6 @@
 // User persistence contract consumed by application use cases.
+import type { Page } from "../page.js";
 import type { User, UserRole } from "../../domain/user-domain.js";
-
-export interface UserPage {
-  items: User[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
 
 export interface ListUsersQuery {
   page: number;
@@ -19,7 +13,7 @@ export interface UserUpdate {
 }
 
 export interface UserRepository {
-  list(query: ListUsersQuery): Promise<UserPage>;
+  list(query: ListUsersQuery): Promise<Page<User>>;
   findById(id: number): Promise<User | undefined>;
   findByEmail(email: string): Promise<User | undefined>;
   findByKeycloakSubject(subject: string): Promise<User | undefined>;

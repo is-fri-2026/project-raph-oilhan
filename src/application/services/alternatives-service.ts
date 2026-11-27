@@ -10,10 +10,10 @@ import {
 } from "../../domain/alternative-domain.js";
 import type { AlternativeActor } from "../../domain/user-domain.js";
 import type {
-  AlternativePage,
   AlternativeRepository,
   AlternativeUpdate,
 } from "../ports/alternative-repository.js";
+import type { Page } from "../page.js";
 import { ApplicationError } from "../errors.js";
 
 export interface ListAlternativesInput {
@@ -27,7 +27,7 @@ export interface ListAlternativesInput {
 export class AlternativesService {
   constructor(private readonly alternatives: AlternativeRepository) {}
 
-  list(input: ListAlternativesInput): Promise<AlternativePage> {
+  list(input: ListAlternativesInput): Promise<Page<SoftwareAlternative>> {
     return this.alternatives.list({
       page: input.page,
       pageSize: input.pageSize,

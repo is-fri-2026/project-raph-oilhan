@@ -2,21 +2,24 @@
 
 ## Components
 
+The backend API is implemented. The web, mobile and AI agent components below describe
+the target architecture; they are not implemented in this repository yet.
+
 ```mermaid
 flowchart LR
     subgraph Clients
         Web[React + Vite web app]
-        Mobile[Mobile To be decided]
-        AgentUI[Agent chat / MCP client]
+        Mobile[Mobile app - planned]
+        AgentUI[Agent chat / MCP client - planned]
     end
     subgraph Cloud
         API[Node.js + Express REST API]
-        Agent[AI agent orchestration]
+        Agent[AI agent orchestration - planned]
         Auth[Keycloak OIDC]
         ORM[Prisma ORM]
         DB[(PostgreSQL)]
     end
-    LLM[Google Gemini API]
+    LLM[Google Gemini API - planned]
 
     Web -->|HTTPS + bearer token| API
     Mobile -->|HTTPS + bearer token| API
@@ -35,97 +38,107 @@ Update this diagram as the system evolves.
 
 ## Layers (backend)
 
-The backend follows a layered architecture. HTTP endpoints do not contain business
-rules and do not access the database directly.
+The backend follows Clean Architecture: HTTP and database details stay outside the
+business rules. Dependencies point inward.
 
 ```mermaid
 flowchart TD
     Clients[Web / Mobile / Agent] --> Presentation
     Presentation[Presentation layer\nREST endpoints, DTOs, validation] --> Application
-    Application[Application layer\nUse cases, services, authorization policies] --> Domain
-    Domain[Domain layer\nEntities, statuses, business rules]
+    Application[Application layer\nUse cases and services] --> Domain
+    Domain[Domain layer\nModels and business rules]
     Application --> Port[Repository interfaces]
     Infrastructure[Infrastructure layer\nRepository implementations] -. implements .-> Port
-    Infrastructure --> ORM --> DB[(Managed database)]
+    Infrastructure --> ORM[Prisma ORM] --> DB[(PostgreSQL)]
 ```
 
-    ### Source layout
+### Source layout
 
-    - `src/presentation/http/` contains routes, authentication middleware, validation,
-      HTTP errors and DTO conversion.
-    - `src/application/` contains use-case services, repository ports and application errors.
-    - `src/domain/` contains domain types and business policies.
-    - `src/infrastructure/prisma/` contains the Prisma client and repository implementations.
-    - `src/app.ts` composes the layers; `src/server.ts` starts the HTTP server.
-    - `prisma/seed.ts` initializes demonstration data explicitly; starting the API does not
-      run the seed.
+```text
+src/
+├── app.ts                         # Composes the API and connects its dependencies
+├── server.ts                      # Starts the HTTP server
+├── presentation/
+│   ├── http/
+│   │   ├── routes/                # Express route handlers
+│   │   ├── middleware/            # Request validation and user helpers
+│   │   ├── auth.ts                # Keycloak token validation
+│   │   ├── errors.ts              # HTTP errors and Problem Details
+│   │   └── express.d.ts           # Express request type augmentation
+│   └── dto/
+│       ├── request-dtos.ts        # Zod request schemas and inferred input types
+│       ├── public-user-dto.ts     # Public user response mapping
+│       └── software-alternative-dto.ts
+├── application/
+│   ├── services/                  # User and alternative use cases
+│   ├── ports/                     # Repository interfaces
+│   ├── page.ts                    # Shared paginated result type
+│   └── errors.ts                  # Application errors
+├── domain/
+│   ├── user-domain.ts             # User model and access rules
+│   └── alternative-domain.ts      # Alternative model and business rules
+└── infrastructure/
+    └── prisma/                    # Prisma client and repository implementations
+
+prisma/                             # Database schema, migrations and seed data
+docs/api/openapi.yaml               # REST API contract
+api-tests/bruno/                    # HTTP integration tests
+infra/keycloak/                     # Keycloak realm configuration
+scripts/                            # API test runner and Keycloak setup
+```
 
 ### Presentation layer
 
-- Exposes the REST API described by `docs/api/openapi.yaml`.
-- Converts HTTP requests into input DTOs and validates them before calling a service.
-- Converts service results into output DTOs; database entities are never returned directly.
-- Maps authentication and authorization failures to structured Problem Details responses:
-  `401` when no valid identity is available and `403` when the identity is not allowed.
+Handles HTTP, authentication, request validation and response DTOs. Routes call
+application services; they do not contain business rules or access the database.
 
 ### Application layer
 
-- Contains the use-case services for searching approved
-  alternatives, submitting content, editing or deleting owned pending submissions,
-  ratings, moderation and user-role management.
-- Enforces authorization in the service boundary, including both role checks and
-  ownership checks. Controllers must not be the only place where these checks occur.
-- Coordinates repositories and transactions, then returns DTOs to the presentation
-  layer.
-- Keeps moderation rules consistent: new alternatives, tasks, devices and
-  compatibility records remain pending until an administrator approves them.
+Coordinates user and software-alternative use cases, enforces role and ownership
+checks, and calls repository interfaces. It does not depend on Prisma.
 
 ### Domain layer
 
-- Defines the domain entities documented in `docs/data-model.md`: `User`,
-  `SoftwareAlternative`, `Task`, `Device`, `DeviceCompatibility` and `Rating`.
-- Owns rules that must remain true regardless of the transport mechanism, including
-  unique emails, scores from 1 to 5, one rating per user and alternative, valid
-  moderation statuses, and the requirement for approved task/device associations
-  before publication.
-- Does not depend on HTTP, JWT, the ORM or the LLM provider.
+Contains the `User` and `SoftwareAlternative` models and their business/access rules.
+These rules are functions in the domain files.
+
+### Infrastructure layer
+
+Implements the repository interfaces with Prisma. It maps database records to domain
+models and keeps persistence-specific code outside the application and domain layers.
+
+### Request flow
+
+1. Express matches the URL to a route mounted in `src/app.ts`.
+2. The route runs the required authentication middleware and validates request data.
+3. The application service applies use-case and access rules, then calls a repository
+   interface.
+4. The Prisma repository reads or writes PostgreSQL and returns a domain model.
+5. The route maps the result to a response DTO and sends the HTTP response.
+
+Errors are passed to the central Express error handler in `src/app.ts`, which converts
+HTTP and application errors into Problem Details responses.
 
 ## Authentication & authorization
 
-Users authenticate with Keycloak using OpenID Connect. Keycloak returns a
-short-lived JWT bearer token; clients send it in the `Authorization` header over
-HTTPS. The API validates the token using Keycloak's public JWKS and never stores
-passwords.
+Keycloak authenticates users and issues bearer tokens. The API validates tokens using
+Keycloak's public signing keys and provisions an application user when needed.
 
-There are two roles:
-
-- `user`: searches approved alternatives, submits tasks, devices and alternatives,
-  rates alternatives, and edits or deletes only their own pending submissions.
-- `admin`: has all user permissions and can approve or reject submissions and
-  manage user roles.
-
-Authorization is enforced in the application/service layer for every protected
-endpoint. Ownership is checked in addition to the role, so a user cannot modify
-another user's content. Missing or invalid tokens return `401`; authenticated
-users without the required role or ownership return `403`. The AI agent forwards
-the authenticated user's token and cannot bypass these rules; destructive actions
-require explicit user confirmation.
-
+The API supports `user` and `admin` roles. Authorization and ownership checks are
+enforced by application services; clients cannot bypass these checks by calling the
+API directly.
 
 ## Deployment
 
-The deployment uses GitHub Actions, GitHub Container Registry (GHCR), Render (easier that AWS, Azure or Google cloud, postgres and express intergration) and
-a managed PostgreSQL database. Every push to `main` triggers the build and tests;
-the validated Docker image is then deployed to Render over HTTPS.
-
-Secrets (JWT key, database URL and LLM API key) are stored as Render environment
-variables and are never committed to the repository. Application logs are
-available in Render, and `/health` is used for monitoring and deployment checks.
+Docker Compose runs the API, PostgreSQL and Keycloak locally, applies migrations and
+seed data, and provisions local Keycloak test accounts. GitHub Actions builds the API,
+validates the OpenAPI contract and runs Bruno integration tests. GHCR and Render are
+the documented cloud targets; the current CI workflow does not deploy the application.
 
 ```mermaid
 flowchart LR
-    Dev[Push to main] --> CI[GitHub Actions: build + test]
-    CI --> Reg[GitHub Container Registry GHCR]
-    Reg --> Run[Render: cloud runtime]
-    Run --> DB[(Render PostgreSQL: managed DB)]
+    Dev[Pull request or push to main] --> CI[GitHub Actions: build, lint and test]
+    CI -. planned image publishing .-> Reg[GitHub Container Registry GHCR]
+    Reg -. planned deployment .-> Run[Render: cloud runtime]
+    Run --> DB[(Managed PostgreSQL - target)]
 ```

@@ -1,6 +1,7 @@
 // Prisma implementation of the alternative persistence contract.
 import { Prisma } from "@prisma/client";
 import { prisma } from "./client.js";
+import type { Page } from "../../application/page.js";
 import type {
   AlternativeStatus,
   AlternativeVisibility,
@@ -9,7 +10,6 @@ import type {
 } from "../../domain/alternative-domain.js";
 import { DuplicateAlternativeNameError } from "../../domain/alternative-domain.js";
 import type {
-  AlternativePage,
   AlternativeRepository,
   AlternativeUpdate,
   ListAlternativesQuery,
@@ -72,7 +72,7 @@ function toWhere(query: ListAlternativesQuery) {
 }
 
 export class PrismaAlternativeRepository implements AlternativeRepository {
-  async list(query: ListAlternativesQuery): Promise<AlternativePage> {
+  async list(query: ListAlternativesQuery): Promise<Page<SoftwareAlternative>> {
     const where = toWhere(query);
     const [rows, total] = await Promise.all([
       prisma.softwareAlternative.findMany({

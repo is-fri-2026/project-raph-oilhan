@@ -7,10 +7,10 @@ import {
 } from "../../domain/user-domain.js";
 import type {
   ListUsersQuery,
-  UserPage,
   UserRepository,
   UserUpdate,
 } from "../ports/user-repository.js";
+import type { Page } from "../page.js";
 import { ApplicationError } from "../errors.js";
 
 export class UsersService {
@@ -22,7 +22,7 @@ export class UsersService {
     }
   }
 
-  async list(actor: User, query: ListUsersQuery): Promise<UserPage> {
+  async list(actor: User, query: ListUsersQuery): Promise<Page<User>> {
     this.assertCanList(actor);
     return this.users.list(query);
   }

@@ -1,10 +1,14 @@
 // Validate request data for user updates and software-alternative operations.
 
 import { z } from "zod";
+import { alternativeStatuses } from "../../domain/alternative-domain.js";
+import { userRoles } from "../../domain/user-domain.js";
 
 const email = z.string().email().max(254).transform((value) => value.toLowerCase());
+export const alternativeStatusSchema = z.enum(alternativeStatuses);
+
 export const userUpdateSchema = z
-  .object({ email, role: z.enum(["user", "admin"]) })
+  .object({ email, role: z.enum(userRoles) })
   .partial()
   .strict()
   .refine((value) => Object.keys(value).length > 0, "At least one property is required");
@@ -22,7 +26,7 @@ export const alternativeUpdateSchema = z
     taskId: z.number().int().positive(),
     name: z.string().trim().min(1).max(150),
     description: z.string().trim().min(1).max(5000),
-    status: z.enum(["pending", "approved", "rejected"]),
+    status: alternativeStatusSchema,
     moderationReason: z.string().trim().max(1000).nullable(),
   })
   .partial()

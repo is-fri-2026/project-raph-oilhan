@@ -1,9 +1,9 @@
 // Prisma implementation of the user persistence contract.
 import { prisma } from "./client.js";
 import type { User, UserRole } from "../../domain/user-domain.js";
+import type { Page } from "../../application/page.js";
 import type {
   ListUsersQuery,
-  UserPage,
   UserRepository,
   UserUpdate,
 } from "../../application/ports/user-repository.js";
@@ -25,7 +25,7 @@ function mapUser(user: {
 }
 
 export class PrismaUserRepository implements UserRepository {
-  async list(query: ListUsersQuery): Promise<UserPage> {
+  async list(query: ListUsersQuery): Promise<Page<User>> {
     const [rows, total] = await Promise.all([
       prisma.user.findMany({
         orderBy: { id: "asc" },

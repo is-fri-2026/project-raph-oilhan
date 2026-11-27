@@ -1,7 +1,8 @@
 // Domain model and business rules for software alternatives.
 import type { AlternativeActor } from "./user-domain.js";
 
-export type AlternativeStatus = "pending" | "approved" | "rejected";
+export const alternativeStatuses = ["pending", "approved", "rejected"] as const;
+export type AlternativeStatus = (typeof alternativeStatuses)[number];
 
 export interface SoftwareAlternative {
   id: number;

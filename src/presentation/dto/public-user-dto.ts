@@ -1,6 +1,6 @@
 // Maps internal users to public DTOs without exposing OIDC identifiers.
 import type { User } from "../../domain/user-domain.js";
-import type { UserPage } from "../../application/ports/user-repository.js";
+import type { Page } from "../../application/page.js";
 
 export interface PublicUserDto {
   id: number;
@@ -18,6 +18,6 @@ export function toPublicUserDto(user: User): PublicUserDto {
   };
 }
 
-export function toPublicUserPageDto(page: UserPage) {
+export function toPublicUserPageDto(page: Page<User>) {
   return { ...page, items: page.items.map(toPublicUserDto) };
 }

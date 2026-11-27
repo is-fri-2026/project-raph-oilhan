@@ -1,13 +1,13 @@
 // HTTP adapter for software-alternative routes: validation, service calls, and response DTOs.
 import { Router } from "express";
-import { z } from "zod";
 import type { AuthMiddleware } from "../auth.js";
 import {
   idSchema,
   alternativeCreateSchema,
   alternativeUpdateSchema,
+  alternativeStatusSchema,
   paginationSchema,
-} from "../schemas.js";
+} from "../../dto/request-dtos.js";
 import { currentUser, parse } from "../middleware/validation.js";
 import { AlternativesService } from "../../../application/services/alternatives-service.js";
 import {
@@ -29,7 +29,7 @@ export function createAlternativesRouter(
       : parse(idSchema, request.query.taskId);
     const status = request.query.status === undefined
       ? undefined
-      : parse(z.enum(["pending", "approved", "rejected"]), request.query.status);
+      : parse(alternativeStatusSchema, request.query.status);
     response.json(toSoftwareAlternativePageDto(await alternatives.list({
       page,
       pageSize,
