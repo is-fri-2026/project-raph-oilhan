@@ -6,6 +6,7 @@ import { userRoles } from "../../domain/user-domain.js";
 
 const email = z.string().email().max(254).transform((value) => value.toLowerCase());
 export const alternativeStatusSchema = z.enum(alternativeStatuses);
+export const booleanQuerySchema = z.enum(["true", "false"]).transform((value) => value === "true");
 
 export const userUpdateSchema = z
   .object({ email, role: z.enum(userRoles) })

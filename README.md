@@ -203,6 +203,74 @@ npm run build
 npm run lint:openapi
 ```
 
+### Web application (React + Vite)
+
+The web client lives in `web/` and consumes only operations described by
+`docs/api/openapi.yaml`. Start the API and Keycloak with the Docker workflow
+above, then, in a second terminal, install and start the web app:
+
+```powershell
+npm --prefix web ci
+npm --prefix web run dev
+```
+
+Open `http://localhost:5173`. Vite proxies `/api` and `/health` to the local API
+on port 8080. Public pages load without login. The web app silently checks for an
+existing Keycloak session; a login redirect happens only after the user selects
+**Se connecter**. The browser uses the public `project-web` OIDC client with
+Authorization Code + PKCE, while the API validates bearer tokens for the
+`project-api` audience. Self-registration is enabled in the realm and new
+accounts receive the `user` role. Registration uses a distinct required
+username and email; first name and last name are optional. Keycloak remains the
+source of truth for usernames, while the API provisions application users by
+email and Keycloak subject. Keycloak keeps realm settings in its persistent
+volume, so importing a changed realm export does not update an already-created
+realm. To apply the current registration and client settings without changing
+test-account passwords, run:
+
+```powershell
+docker compose run --build --rm keycloak-setup npm run setup:keycloak-clients
+```
+
+Then reload the web app and choose **Sign up**. Local browser settings can be
+overridden in `web/.env`.
+Set `VITE_API_URL` in the web environment when the API is not served from the
+same origin; leave it empty for the local Vite proxy.
+
+Authenticated users can review their own pending, approved, and rejected
+alternatives in **My submissions**. Administrators also have an **Approved
+alternatives** page for reviewing and deleting approved entries. The personal
+list uses `GET /api/software-alternatives?status=approved&mine=true`; the admin
+page lists approved entries and deletes them through
+`DELETE /api/software-alternatives/{id}`.
+
+For an existing local Keycloak realm, apply the current client settings without
+deleting its data with:
+
+```powershell
+docker compose run --build --rm keycloak-setup
+```
+
+The local setup script also re-synchronizes the test-account passwords from
+`.env`. For a deployed realm, configure only the OIDC clients without touching
+test accounts by running `npm run setup:keycloak-clients` with
+`KEYCLOAK_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_ADMIN_USERNAME`,
+`KEYCLOAK_ADMIN_PASSWORD`, and `WEB_ORIGIN` supplied through the deployment
+secret store.
+
+`WEB_ORIGIN` sets the exact SPA callback and web origin. Set
+`CORS_ALLOWED_ORIGINS` to the exact frontend origin(s) accepted by the API. For
+production, set both to the deployed HTTPS origin, set `VITE_API_URL` to the
+public API HTTPS origin, and configure `VITE_KEYCLOAK_URL` to the public
+Keycloak HTTPS origin. Do not use wildcard origins.
+
+The interface currently enables public alternative search by task ID,
+authenticated pending-submission create/edit/delete, administrator moderation
+of alternatives, and administrator user-role management. Device association,
+free-text and natural-language search, ratings, agent workflows, camera scan,
+notifications, and task/device moderation remain visibly disabled because the
+current API contract does not expose those operations or fields.
+
 ## CI/CD
 
 GitHub Actions runs on pull requests, pushes to `main`, and manual dispatch.

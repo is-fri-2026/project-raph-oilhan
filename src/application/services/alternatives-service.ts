@@ -21,6 +21,7 @@ export interface ListAlternativesInput {
   pageSize: number;
   taskId?: number;
   status?: AlternativeStatus;
+  ownOnly?: boolean;
   actor?: AlternativeActor;
 }
 
@@ -33,7 +34,7 @@ export class AlternativesService {
       pageSize: input.pageSize,
       ...(input.taskId === undefined ? {} : { taskId: input.taskId }),
       ...(input.status === undefined ? {} : { status: input.status }),
-      visibility: alternativeVisibility(input.actor, input.status),
+      visibility: alternativeVisibility(input.actor, input.status, input.ownOnly),
     });
   }
 

@@ -7,7 +7,7 @@ import { HttpError } from "./errors.js";
 import type { UsersService } from "../../application/services/users-service.js";
 
 const keycloakIssuer = process.env.KEYCLOAK_ISSUER_URL;
-const keycloakAudience = process.env.KEYCLOAK_AUDIENCE;
+const keycloakAudience = process.env.KEYCLOAK_AUDIENCE || "project-api";
 const keycloakJwksUrl = process.env.KEYCLOAK_JWKS_URL;
 const keycloakJwks = keycloakIssuer
   ? createRemoteJWKSet(new URL(
@@ -70,17 +70,18 @@ async function findOrCreateUserFromKeycloakClaims(
     throw new Error("Keycloak token has no subject");
   }
 
-  const email = typeof claims.email === "string"
-    ? claims.email
-    : typeof claims.preferred_username === "string"
-      ? claims.preferred_username
-      : undefined;
+  const email = typeof claims.email === "string" ? claims.email : undefined;
   if (!email) {
-    throw new Error("Keycloak token has no email or preferred username");
+    throw new Error("Keycloak token has no email");
   }
 
   const role = keycloakRoles(claims).includes("admin") ? "admin" : "user";
-  return users.provisionFromIdentity(email, role, claims.sub);
+  return users.provisionFromIdentity(
+    email,
+    role,
+    claims.sub,
+    claims.email_verified === true,
+  );
 }
 
 function keycloakRoles(claims: JWTPayload): string[] {

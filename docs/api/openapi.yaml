@@ -56,7 +56,7 @@ paths:
     patch:
       operationId: updateUser
       summary: Update a user
-      description: Users may update their own email or password; administrators may update the role.
+      description: Users may update their own email; administrators may update the role. Passwords are managed by the identity provider.
       requestBody:
         required: true
         content:
@@ -87,13 +87,19 @@ paths:
     get:
       operationId: listSoftwareAlternatives
       summary: List software alternatives
-      description: Public users receive approved alternatives; authenticated users may see their own pending submissions.
-      security: []
+      description: Public users receive approved alternatives; authenticated users may see their own pending submissions. With mine=true, results are limited to the caller's alternatives and authentication is required.
+      security:
+        - {}
+        - bearerAuth: []
       parameters:
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
         - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
         - { name: taskId, in: query, schema: { type: integer, minimum: 1 } }
         - { name: status, in: query, schema: { $ref: "#/components/schemas/AlternativeStatus" } }
+        - name: mine
+          in: query
+          description: Requires authentication; when true, returns only alternatives submitted by the current user.
+          schema: { type: boolean, default: false }
       responses:
         "200":
           description: A page of software alternatives

@@ -42,7 +42,12 @@ export function newAlternativeSubmission(
 export function alternativeVisibility(
   actor: AlternativeActor | undefined,
   requestedStatus: AlternativeStatus | undefined,
+  ownOnly = false,
 ): AlternativeVisibility {
+  if (ownOnly) {
+    return actor ? { kind: "owned", ownerId: actor.id } : { kind: "none" };
+  }
+
   if (actor?.role === "admin") return { kind: "all" };
 
   if (requestedStatus === "approved") return { kind: "approved" };
