@@ -66,7 +66,7 @@ export interface paths {
         head?: never;
         /**
          * Update a user
-         * @description Users may update their own email; administrators may update the role. Passwords are managed by the identity provider.
+         * @description Users may update their own email and administrators may update a user's role. Email and role changes are applied in Keycloak; the API profile mirrors the identity provider.
          */
         patch: operations["updateUser"];
         trace?: never;
@@ -80,7 +80,7 @@ export interface paths {
         };
         /**
          * List software alternatives
-         * @description Public users receive approved alternatives; authenticated users may see their own pending submissions.
+         * @description Public users receive approved alternatives; authenticated users may see their own pending submissions. With mine=true, results are limited to the caller's alternatives and authentication is required.
          */
         get: operations["listSoftwareAlternatives"];
         put?: never;
@@ -127,6 +127,7 @@ export interface components {
             id: number;
             /** Format: email */
             email: string;
+            /** @description Current application role derived from Keycloak and mirrored by the API. */
             role: components["schemas"]["UserRole"];
             /** Format: date-time */
             createdAt: string;
@@ -226,6 +227,15 @@ export interface components {
         };
         /** @description Resource conflicts with existing data */
         Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["ProblemDetails"];
+            };
+        };
+        /** @description Keycloak could not apply the identity update */
+        IdentityProviderUnavailable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -361,6 +371,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["IdentityProviderUnavailable"];
         };
     };
     listSoftwareAlternatives: {
@@ -370,6 +381,8 @@ export interface operations {
                 pageSize?: number;
                 taskId?: number;
                 status?: components["schemas"]["AlternativeStatus"];
+                /** @description Requires authentication; when true, returns only alternatives submitted by the current user. */
+                mine?: boolean;
             };
             header?: never;
             path?: never;

@@ -1,0 +1,21 @@
+meta {
+  name: Delete approved alternative forbidden
+  type: http
+  seq: 15
+}
+
+delete {
+  url: {{baseUrl}}/api/software-alternatives/{{otherUserAlternativeId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{userToken}}
+}
+
+tests {
+  test("a regular user cannot delete another user's approved alternative", function() {
+    expect(res.status).to.equal(403);
+  });
+}

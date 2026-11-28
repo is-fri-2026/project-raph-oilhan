@@ -1,0 +1,21 @@
+meta {
+  name: Admin delete approved alternative
+  type: http
+  seq: 16
+}
+
+delete {
+  url: {{baseUrl}}/api/software-alternatives/{{otherUserAlternativeId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{adminToken}}
+}
+
+tests {
+  test("an administrator can delete an approved alternative", function() {
+    expect(res.status).to.equal(204);
+  });
+}

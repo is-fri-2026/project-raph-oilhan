@@ -6,9 +6,11 @@ import {
   alternativeCreateSchema,
   alternativeUpdateSchema,
   alternativeStatusSchema,
+  booleanQuerySchema,
   paginationSchema,
 } from "../../dto/request-dtos.js";
 import { currentUser, parse } from "../middleware/validation.js";
+import { HttpError } from "../errors.js";
 import { AlternativesService } from "../../../application/services/alternatives-service.js";
 import {
   toSoftwareAlternativeDto,
@@ -30,11 +32,18 @@ export function createAlternativesRouter(
     const status = request.query.status === undefined
       ? undefined
       : parse(alternativeStatusSchema, request.query.status);
+    const ownOnly = request.query.mine === undefined
+      ? false
+      : parse(booleanQuerySchema, request.query.mine);
+    if (ownOnly && !request.user) {
+      throw new HttpError(401, "Unauthorized", "Authentication is required to list your alternatives.");
+    }
     response.json(toSoftwareAlternativePageDto(await alternatives.list({
       page,
       pageSize,
       taskId,
       status,
+      ownOnly,
       actor: request.user,
     })));
   });

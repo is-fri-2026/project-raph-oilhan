@@ -77,9 +77,9 @@ The collection covers:
 - `GET /health`
 - User list: success, unauthenticated (`401`) and forbidden (`403`)
 - User read/update/delete: success, validation, forbidden and not found (`404`)
-- Software-alternative list: success and invalid pagination (`400`)
+- Software-alternative list: success, invalid pagination (`400`), and owner-only approved results
 - Software-alternative create: success, validation and unauthenticated (`401`)
-- Software-alternative read/update/delete: success, validation, forbidden and not found (`404`)
+- Software-alternative read/update/delete: success, validation, forbidden and not found (`404`); administrators can delete approved alternatives
 
 ## Test data and secrets
 

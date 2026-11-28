@@ -219,11 +219,30 @@ on port 8080. Public pages load without login. The web app silently checks for a
 existing Keycloak session; a login redirect happens only after the user selects
 **Se connecter**. The browser uses the public `project-web` OIDC client with
 Authorization Code + PKCE, while the API validates bearer tokens for the
-`project-api` audience. The realm disables self-registration, so the create
-account control is intentionally inactive. Local browser settings can be
+`project-api` audience. Self-registration is enabled in the realm and new
+accounts receive the `user` role. Registration uses a distinct required
+username and email; first name and last name are optional. Keycloak remains the
+source of truth for usernames, while the API provisions application users by
+email and Keycloak subject. Keycloak keeps realm settings in its persistent
+volume, so importing a changed realm export does not update an already-created
+realm. To apply the current registration and client settings without changing
+test-account passwords, run:
+
+```powershell
+docker compose run --build --rm keycloak-setup npm run setup:keycloak-clients
+```
+
+Then reload the web app and choose **Sign up**. Local browser settings can be
 overridden in `web/.env`.
 Set `VITE_API_URL` in the web environment when the API is not served from the
 same origin; leave it empty for the local Vite proxy.
+
+Authenticated users can review their own pending, approved, and rejected
+alternatives in **My submissions**. Administrators also have an **Approved
+alternatives** page for reviewing and deleting approved entries. The personal
+list uses `GET /api/software-alternatives?status=approved&mine=true`; the admin
+page lists approved entries and deletes them through
+`DELETE /api/software-alternatives/{id}`.
 
 For an existing local Keycloak realm, apply the current client settings without
 deleting its data with:

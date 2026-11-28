@@ -70,17 +70,18 @@ async function findOrCreateUserFromKeycloakClaims(
     throw new Error("Keycloak token has no subject");
   }
 
-  const email = typeof claims.email === "string"
-    ? claims.email
-    : typeof claims.preferred_username === "string"
-      ? claims.preferred_username
-      : undefined;
+  const email = typeof claims.email === "string" ? claims.email : undefined;
   if (!email) {
-    throw new Error("Keycloak token has no email or preferred username");
+    throw new Error("Keycloak token has no email");
   }
 
   const role = keycloakRoles(claims).includes("admin") ? "admin" : "user";
-  return users.provisionFromIdentity(email, role, claims.sub);
+  return users.provisionFromIdentity(
+    email,
+    role,
+    claims.sub,
+    claims.email_verified === true,
+  );
 }
 
 function keycloakRoles(claims: JWTPayload): string[] {

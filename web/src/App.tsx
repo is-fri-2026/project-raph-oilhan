@@ -11,16 +11,22 @@ import {
   type User,
   type UserPage,
 } from "./api";
-import { currentEmail, hasRole, isAuthenticated, logout } from "./auth";
-import LoginPage from "./LoginPage";
+import {
+  currentEmail,
+  hasRole,
+  initializeAuth,
+  login,
+  logout,
+  register,
+} from "./auth";
 
-type View = "search" | "submissions" | "moderation" | "users";
+type View = "search" | "submissions" | "moderation" | "approved" | "users";
+const taskPath = /^\/tasks\/\d+\/?$/;
 
 const unavailable = [
   "Free-text search",
   "Device filter",
   "Compatibility details",
-  "Registration",
   "Ratings",
   "Natural-language search",
   "Recommendation agent",
@@ -34,30 +40,59 @@ export default function App() {
   const [admin, setAdmin] = useState(false);
   const [view, setView] = useState<View>("search");
   const [message, setMessage] = useState("");
-  const [showLogin, setShowLogin] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [path, setPath] = useState(window.location.pathname);
 
-  /** Called by LoginPage once credentials are validated. */
-  function handleLoginSuccess() {
-    setAuthenticated(true);
-    setAdmin(hasRole("admin"));
-    setShowLogin(false);
+  useEffect(() => {
+    function syncPath() {
+      setPath(window.location.pathname);
+    }
+    window.addEventListener("popstate", syncPath);
+    return () => window.removeEventListener("popstate", syncPath);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void initializeAuth()
+      .then((authenticatedUser) => {
+        if (!active) return;
+        setAuthenticated(authenticatedUser);
+        setAdmin(hasRole("admin"));
+      })
+      .catch((error: unknown) => {
+        if (active) setMessage(errorMessage(error));
+      })
+      .finally(() => {
+        if (active) setAuthReady(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function navigate(nextPath: string) {
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, "", nextPath);
+    }
+    setPath(nextPath);
   }
 
-  /** Called when the user clicks "Sign in" in the topbar. */
-  function openLogin() {
-    setShowLogin(true);
+  function startAuthentication(action: "login" | "register") {
+    setMessage("");
+    const redirect = action === "register" ? register : login;
+    void redirect().catch((error: unknown) => setMessage(errorMessage(error)));
   }
 
   async function handleLogout() {
-    await logout();
-    setAuthenticated(false);
-    setAdmin(false);
-    setView("search");
-  }
-
-  // Show the login overlay when requested (and user is not already authenticated)
-  if (showLogin && !isAuthenticated()) {
-    return <LoginPage onSuccess={handleLoginSuccess} />;
+    try {
+      await logout();
+      setAuthenticated(false);
+      setAdmin(false);
+      setView("search");
+      navigate("/");
+    } catch (error) {
+      setMessage(errorMessage(error));
+    }
   }
 
   return (
@@ -75,8 +110,18 @@ export default function App() {
             </>
           ) : (
             <>
-              <button className="button" onClick={openLogin}>Sign in</button>
-              <button className="button disabled" disabled title="Self-registration is disabled.">
+              <button
+                className="button"
+                disabled={!authReady}
+                onClick={() => startAuthentication("login")}
+              >
+                Sign in
+              </button>
+              <button
+                className="button secondary"
+                disabled={!authReady}
+                onClick={() => startAuthentication("register")}
+              >
                 Sign up
               </button>
             </>
@@ -85,12 +130,18 @@ export default function App() {
       </header>
 
       <nav className="navigation" aria-label="Main navigation">
-        <NavButton active={view === "search"} onClick={() => setView("search")}>Search</NavButton>
+        <NavButton active={view === "search" && !taskPath.test(path)} onClick={() => {
+          setView("search");
+          navigate("/");
+        }}>Search</NavButton>
         <NavButton
           active={view === "submissions"}
           disabled={!authenticated}
           title={!authenticated ? "Sign in to access your submissions." : undefined}
-          onClick={() => setView("submissions")}
+          onClick={() => {
+            setView("submissions");
+            navigate("/");
+          }}
         >
           My submissions
         </NavButton>
@@ -98,15 +149,32 @@ export default function App() {
           active={view === "moderation"}
           disabled={!admin}
           title={!admin ? "Administrators only." : undefined}
-          onClick={() => setView("moderation")}
+          onClick={() => {
+            setView("moderation");
+            navigate("/");
+          }}
         >
           Moderation
+        </NavButton>
+        <NavButton
+          active={view === "approved"}
+          disabled={!admin}
+          title={!admin ? "Administrators only." : undefined}
+          onClick={() => {
+            setView("approved");
+            navigate("/");
+          }}
+        >
+          Approved alternatives
         </NavButton>
         <NavButton
           active={view === "users"}
           disabled={!admin}
           title={!admin ? "Administrators only." : undefined}
-          onClick={() => setView("users")}
+          onClick={() => {
+            setView("users");
+            navigate("/");
+          }}
         >
           Users
         </NavButton>
@@ -132,13 +200,22 @@ export default function App() {
         </div>
       )}
 
-      {view === "search" && <SearchView onError={setMessage} />}
-      {view === "submissions" && authenticated && <SubmissionsView onError={setMessage} />}
-      {view === "moderation" && admin && <ModerationView onError={setMessage} />}
-      {view === "users" && admin && <UsersView onError={setMessage} />}
+      {taskPath.test(path) ? (
+        <TaskDetailsPage onBack={() => navigate("/")} />
+      ) : (
+        <>
+          {view === "search" && (
+            <SearchView onError={setMessage} onNavigateToTask={(id) => navigate(`/tasks/${id}`)} />
+          )}
+          {view === "submissions" && authenticated && <SubmissionsView onError={setMessage} />}
+          {view === "moderation" && admin && <ModerationView onError={setMessage} />}
+          {view === "approved" && admin && <ApprovedAlternativesView onError={setMessage} />}
+          {view === "users" && admin && <UsersView onError={setMessage} />}
+        </>
+      )}
 
       <footer>
-        <span>Available features reflect the current API contract.</span>
+        <span>API-powered features reflect the current API contract.</span>
         <span className="legend"><i /> Not yet supported by the API</span>
       </footer>
     </main>
@@ -164,9 +241,13 @@ function NavButton(props: {
   );
 }
 
-function SearchView({ onError }: { onError: (message: string) => void }) {
+function SearchView({ onError, onNavigateToTask }: {
+  onError: (message: string) => void;
+  onNavigateToTask: (id: number) => void;
+}) {
   const [taskId, setTaskId] = useState("");
   const [page, setPage] = useState<AlternativePage | null>(null);
+  const [selectedAlternative, setSelectedAlternative] = useState<Alternative | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [loading, setLoading] = useState(false);
 
@@ -193,6 +274,16 @@ function SearchView({ onError }: { onError: (message: string) => void }) {
   }, [onError]);
 
   useEffect(() => { void search(1, ""); }, [search]);
+
+  if (selectedAlternative) {
+    return (
+      <AlternativeDetails
+        item={selectedAlternative}
+        onBack={() => setSelectedAlternative(null)}
+        onNavigateToTask={onNavigateToTask}
+      />
+    );
+  }
 
   return (
     <section className="panel">
@@ -231,7 +322,13 @@ function SearchView({ onError }: { onError: (message: string) => void }) {
       {page?.items.length ? (
         <>
           <div className="cards">
-            {page.items.map((alternative) => <AlternativeCard key={alternative.id} item={alternative} />)}
+            {page.items.map((alternative) => (
+              <AlternativeCard
+                key={alternative.id}
+                item={alternative}
+                onSelect={() => setSelectedAlternative(alternative)}
+              />
+            ))}
           </div>
           <Pagination
             page={pageNumber}
@@ -253,18 +350,20 @@ function SearchView({ onError }: { onError: (message: string) => void }) {
 function SubmissionsView({ onError }: { onError: (message: string) => void }) {
   const [page, setPage] = useState<AlternativePage | null>(null);
   const [rejected, setRejected] = useState<AlternativePage | null>(null);
+  const [approved, setApproved] = useState<AlternativePage | null>(null);
   const [taskId, setTaskId] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [editing, setEditing] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [pageNumber, setPageNumber] = useState(1);
+  const [approvedPageNumber, setApprovedPageNumber] = useState(1);
 
   const refresh = useCallback(async (nextPage: number) => {
     try {
       const [pendingPage, rejectedPage] = await Promise.all([
-        listAlternatives({ page: nextPage, status: "pending" }),
-        listAlternatives({ page: 1, status: "rejected" }),
+        listAlternatives({ page: nextPage, status: "pending", mine: true }),
+        listAlternatives({ page: 1, status: "rejected", mine: true }),
       ]);
       setPage(pendingPage);
       setRejected(rejectedPage);
@@ -274,7 +373,19 @@ function SubmissionsView({ onError }: { onError: (message: string) => void }) {
     }
   }, [onError]);
 
-  useEffect(() => { void refresh(1); }, [refresh]);
+  const refreshApproved = useCallback(async (nextPage: number) => {
+    try {
+      setApproved(await listAlternatives({ page: nextPage, status: "approved", mine: true }));
+      setApprovedPageNumber(nextPage);
+    } catch (error) {
+      onError(errorMessage(error));
+    }
+  }, [onError]);
+
+  useEffect(() => {
+    void refresh(1);
+    void refreshApproved(1);
+  }, [refresh, refreshApproved]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -398,6 +509,36 @@ function SubmissionsView({ onError }: { onError: (message: string) => void }) {
       />}
 
       <div className="list-heading">
+        <h3>My approved alternatives</h3>
+        <button className="text-button" onClick={() => void refreshApproved(approvedPageNumber)}>Refresh</button>
+      </div>
+      {approved?.items.length ? (
+        <>
+          <div className="cards">
+            {approved.items.map((item) => (
+              <article className="alternative-card" key={item.id}>
+                <div className="card-title-row">
+                  <h3>{item.name}</h3>
+                  <span className="status approved">Approved</span>
+                </div>
+                <p>{item.description}</p>
+              </article>
+            ))}
+          </div>
+          <Pagination
+            page={approvedPageNumber}
+            total={approved.total}
+            pageSize={approved.pageSize}
+            onChange={(value) => void refreshApproved(value)}
+          />
+        </>
+      ) : (
+        <div className="empty compact">
+          <strong>{approved ? "No approved alternatives yet" : "Loading approved alternatives…"}</strong>
+        </div>
+      )}
+
+      <div className="list-heading">
         <h3>Rejected submissions</h3>
       </div>
       {rejected?.items.length ? (
@@ -499,6 +640,85 @@ function ModerationView({ onError }: { onError: (message: string) => void }) {
   );
 }
 
+function ApprovedAlternativesView({ onError }: { onError: (message: string) => void }) {
+  const [page, setPage] = useState<AlternativePage | null>(null);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const refresh = useCallback(async (nextPage: number) => {
+    try {
+      setPage(await listAlternatives({ page: nextPage, status: "approved" }));
+      setPageNumber(nextPage);
+      onError("");
+    } catch (error) {
+      onError(errorMessage(error));
+    }
+  }, [onError]);
+
+  useEffect(() => { void refresh(1); }, [refresh]);
+
+  async function remove(item: Alternative) {
+    if (!window.confirm(`Delete approved alternative "${item.name}"?`)) return;
+    setDeletingId(item.id);
+    try {
+      await deleteAlternative(item.id);
+      onError("");
+      const nextPage = pageNumber > 1 && page?.items.length === 1
+        ? pageNumber - 1
+        : pageNumber;
+      await refresh(nextPage);
+    } catch (error) {
+      onError(errorMessage(error));
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  return (
+    <section className="panel">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">ADMINISTRATION</p>
+          <h2>Approved alternatives</h2>
+        </div>
+        <button className="text-button" onClick={() => void refresh(pageNumber)}>Refresh</button>
+      </div>
+      {page?.items.length ? (
+        <>
+          <div className="cards">
+            {page.items.map((item) => (
+              <article className="alternative-card" key={item.id}>
+                <div className="card-title-row">
+                  <h3>{item.name}</h3>
+                  <span className="status approved">Approved</span>
+                </div>
+                <p>{item.description}</p>
+                <button
+                  className="button danger"
+                  disabled={deletingId !== null}
+                  onClick={() => void remove(item)}
+                >
+                  {deletingId === item.id ? "Deleting…" : "Delete approved alternative"}
+                </button>
+              </article>
+            ))}
+          </div>
+          <Pagination
+            page={pageNumber}
+            total={page.total}
+            pageSize={page.pageSize}
+            onChange={(value) => void refresh(value)}
+          />
+        </>
+      ) : (
+        <div className="empty">
+          <strong>{page ? "No approved alternatives" : "Loading approved alternatives…"}</strong>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function UsersView({ onError }: { onError: (message: string) => void }) {
   const [page, setPage] = useState<UserPage | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
@@ -564,19 +784,120 @@ function UsersView({ onError }: { onError: (message: string) => void }) {
   );
 }
 
-function AlternativeCard({ item }: { item: Alternative }) {
+function AlternativeCard({ item, onSelect }: {
+  item: Alternative;
+  onSelect: () => void;
+}) {
   return (
     <article className="alternative-card">
       <div className="card-title-row">
-        <h3>{item.name}</h3>
-        <span className="status approved">Approved</span>
+        <h3>
+          <button className="alternative-link" type="button" onClick={onSelect}>
+            {item.name}
+          </button>
+        </h3>
       </div>
       <p>{item.description}</p>
-      <small>Task #{item.taskId}</small>
-      <div className="disabled-feature" aria-disabled="true">
-        Compatibility details and ratings are not available in the API yet.
-      </div>
     </article>
+  );
+}
+
+function AlternativeDetails({ item, onBack, onNavigateToTask }: {
+  item: Alternative;
+  onBack: () => void;
+  onNavigateToTask: (id: number) => void;
+}) {
+  return (
+    <section className="panel">
+      <button className="text-button detail-back" type="button" onClick={onBack}>
+        ← Back to alternatives
+      </button>
+      <div className="section-heading detail-heading">
+        <div>
+          <p className="eyebrow">SOFTWARE ALTERNATIVE</p>
+          <h2>{item.name}</h2>
+        </div>
+      </div>
+      <p className="detail-description">{item.description}</p>
+      <DetailSection title="Proposal" fields={[
+        { label: "Proposed on", value: formatDetailDate(item.createdAt) },
+        { label: "Approval date", value: notProvided },
+        { label: "Proposed by", value: notProvided },
+      ]} />
+      <section className="detail-section">
+        <h3>Task</h3>
+        <dl className="detail-fields">
+          <div>
+            <dt>Task name</dt>
+            <dd>
+              <a
+                className="task-link"
+                href={`/tasks/${item.taskId}`}
+                onClick={(event) => {
+                  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+                    return;
+                  }
+                  event.preventDefault();
+                  onNavigateToTask(item.taskId);
+                }}
+              >
+                {notProvided}
+              </a>
+            </dd>
+          </div>
+        </dl>
+      </section>
+      <DetailSection title="Compatibility" fields={[
+        { label: "Device", value: notProvided },
+        { label: "Operating system", value: notProvided },
+        { label: "Memory (MB)", value: notProvided },
+        { label: "Compatibility status", value: notProvided },
+        { label: "Limitations", value: notProvided },
+      ]} />
+      <DetailSection title="Ratings" fields={[
+        { label: "Score (1–5)", value: notProvided },
+        { label: "Comment", value: notProvided },
+      ]} />
+    </section>
+  );
+}
+
+function TaskDetailsPage({ onBack }: { onBack: () => void }) {
+  return (
+    <section className="panel">
+      <button className="text-button detail-back" type="button" onClick={onBack}>
+        ← Back to alternatives
+      </button>
+      <p className="eyebrow">TASK</p>
+      <h2>Task details</h2>
+      <p className="muted">Task information will appear here when it is available.</p>
+    </section>
+  );
+}
+
+const notProvided = "Not provided";
+
+function formatDetailDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" })
+    .format(new Date(value));
+}
+
+function DetailSection({ title, fields }: {
+  title: string;
+  fields: Array<{ label: string; value: string }>;
+}) {
+  return (
+    <section className="detail-section">
+      <h3>{title}</h3>
+      <dl className="detail-fields">
+        {fields.map((field) => (
+          <div key={field.label}>
+            <dt>{field.label}</dt>
+            <dd>{field.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 

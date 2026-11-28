@@ -1,0 +1,17 @@
+meta {
+  name: List my approved alternatives unauthorized
+  type: http
+  seq: 14
+}
+
+get {
+  url: {{baseUrl}}/api/software-alternatives?page=1&pageSize=20&status=approved&mine=true
+  body: none
+  auth: none
+}
+
+tests {
+  test("listing personal alternatives requires authentication", function() {
+    expect(res.status).to.equal(401);
+  });
+}

@@ -1,0 +1,26 @@
+meta {
+  name: List my approved alternatives
+  type: http
+  seq: 13
+}
+
+get {
+  url: {{baseUrl}}/api/software-alternatives?page=1&pageSize=20&status=approved&mine=true
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{userToken}}
+}
+
+tests {
+  test("approved alternatives are limited to the authenticated user", function() {
+    expect(res.status).to.equal(200);
+    expect(res.body.items).to.be.an("array");
+    expect(res.body.items.length).to.be.greaterThan(0);
+    const userId = Number(bru.getEnvVar("userId"));
+    expect(res.body.items.every((item) => item.status === "approved")).to.equal(true);
+    expect(res.body.items.every((item) => item.submittedBy === userId)).to.equal(true);
+  });
+}

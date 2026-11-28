@@ -62,6 +62,28 @@ interface KeycloakRole {
   containerId?: string;
 }
 
+interface KeycloakRealm {
+  defaultRole?: KeycloakRole;
+  [key: string]: unknown;
+}
+
+interface KeycloakProfileRequirement {
+  roles?: string[];
+  scopes?: string[];
+  [key: string]: unknown;
+}
+
+interface KeycloakProfileAttribute {
+  name: string;
+  required?: KeycloakProfileRequirement | null;
+  [key: string]: unknown;
+}
+
+interface KeycloakUserProfile {
+  attributes?: KeycloakProfileAttribute[];
+  [key: string]: unknown;
+}
+
 interface KeycloakClient {
   id: string;
   clientId: string;
@@ -143,6 +165,121 @@ async function getRealmRole(token: string, roleName: string): Promise<KeycloakRo
   }
 
   return (await response.json()) as KeycloakRole;
+}
+
+async function configureRegistrationProfile(token: string): Promise<void> {
+  const profileUrl = `${KEYCLOAK_URL}/admin/realms/${encodeURIComponent(REALM_NAME)}/users/profile`;
+  const profileResponse = await fetch(profileUrl, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!profileResponse.ok) {
+    throw new Error(`[setup-keycloak] Impossible de lire le profil utilisateur : ${await profileResponse.text()}`);
+  }
+
+  const profile = await profileResponse.json() as KeycloakUserProfile;
+  if (!Array.isArray(profile.attributes)) {
+    throw new Error("[setup-keycloak] La configuration du profil utilisateur ne contient pas d'attributs.");
+  }
+
+  const foundAttributes = new Set(profile.attributes.map((attribute) => attribute.name));
+  for (const requiredAttribute of ["username", "email"]) {
+    if (!foundAttributes.has(requiredAttribute)) {
+      throw new Error(`[setup-keycloak] L'attribut '${requiredAttribute}' est absent du profil utilisateur.`);
+    }
+  }
+
+  const attributes = profile.attributes.map((attribute) => {
+    if (attribute.name === "username" || attribute.name === "email") {
+      return {
+        ...attribute,
+        // Keycloak treats empty role/scope requirements as required in every context.
+        required: {
+          roles: [],
+          scopes: [],
+        },
+      };
+    }
+
+    if (attribute.name === "firstName" || attribute.name === "lastName") {
+      // An absent required policy makes these profile attributes optional.
+      const { required: _required, ...optionalAttribute } = attribute;
+      return optionalAttribute;
+    }
+
+    return attribute;
+  });
+
+  const updateResponse = await fetch(profileUrl, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ...profile, attributes }),
+  });
+  if (!updateResponse.ok) {
+    throw new Error(`[setup-keycloak] Impossible de mettre à jour le profil utilisateur : ${await updateResponse.text()}`);
+  }
+
+  console.log("[setup-keycloak] Username et email requis; firstName et lastName facultatifs.");
+}
+
+async function configureSelfRegistration(token: string): Promise<void> {
+  const realmUrl = `${KEYCLOAK_URL}/admin/realms/${encodeURIComponent(REALM_NAME)}`;
+  const realmResponse = await fetch(realmUrl, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!realmResponse.ok) {
+    throw new Error(`[setup-keycloak] Impossible de lire le realm '${REALM_NAME}' : ${await realmResponse.text()}`);
+  }
+
+  const realm = await realmResponse.json() as KeycloakRealm;
+  const updateRealmResponse = await fetch(realmUrl, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ...realm,
+      registrationAllowed: true,
+      registrationEmailAsUsername: false,
+    }),
+  });
+  if (!updateRealmResponse.ok) {
+    throw new Error(`[setup-keycloak] Impossible d'activer l'inscription libre : ${await updateRealmResponse.text()}`);
+  }
+
+  const defaultRoleName = realm.defaultRole?.name;
+  if (!defaultRoleName) {
+    throw new Error(`[setup-keycloak] Le rôle par défaut du realm '${REALM_NAME}' est introuvable.`);
+  }
+  const userRole = await getRealmRole(token, "user");
+  const compositesUrl = `${KEYCLOAK_URL}/admin/realms/${encodeURIComponent(REALM_NAME)}`
+    + `/roles/${encodeURIComponent(defaultRoleName)}/composites`;
+  const compositesResponse = await fetch(compositesUrl, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!compositesResponse.ok) {
+    throw new Error(`[setup-keycloak] Impossible de lire les rôles par défaut : ${await compositesResponse.text()}`);
+  }
+
+  const currentRoles = await compositesResponse.json() as KeycloakRole[];
+  if (!currentRoles.some((role) => role.id === userRole.id)) {
+    const addRoleResponse = await fetch(compositesUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([userRole]),
+    });
+    if (!addRoleResponse.ok) {
+      throw new Error(`[setup-keycloak] Impossible d'attribuer le rôle 'user' par défaut : ${await addRoleResponse.text()}`);
+    }
+  }
+  await configureRegistrationProfile(token);
+  console.log("[setup-keycloak] Inscription libre activée avec le rôle user par défaut.");
 }
 
 async function findClient(token: string, clientId: string): Promise<KeycloakClient | undefined> {
@@ -405,9 +542,10 @@ async function main(): Promise<void> {
   try {
     await waitForKeycloak();
     const token = await getAdminToken();
+    await configureSelfRegistration(token);
     await configureOidcClients(token);
     if (CLIENTS_ONLY) {
-      console.log("[setup-keycloak] Clients OIDC configurés; aucun compte de test modifié.");
+      console.log("[setup-keycloak] Realm et clients configurés; aucun compte de test modifié.");
       return;
     }
 

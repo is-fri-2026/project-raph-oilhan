@@ -46,6 +46,7 @@ export async function listAlternatives(options: {
   page: number;
   status: AlternativeStatus;
   taskId?: number;
+  mine?: boolean;
 }) {
   const result = await client.GET("/api/software-alternatives", {
     params: {
@@ -53,6 +54,7 @@ export async function listAlternatives(options: {
         page: options.page,
         pageSize: 20,
         status: options.status,
+        ...(options.mine ? { mine: true } : {}),
         ...(options.taskId === undefined ? {} : { taskId: options.taskId }),
       },
     },
