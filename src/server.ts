@@ -1,3 +1,4 @@
+// Starts the HTTP server that exposes the Express application.
 import "dotenv/config";
 import { app } from "./app.js";
 

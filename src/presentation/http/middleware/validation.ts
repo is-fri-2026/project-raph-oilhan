@@ -24,11 +24,3 @@ export function currentUser(request: Request) {
   if (!request.user) throw new HttpError(401, "Unauthorized", "Authentication is required.");
   return request.user;
 }
-
-export function requireAdmin(request: Request) {
-  const user = currentUser(request);
-  if (user.role !== "admin") {
-    throw new HttpError(403, "Forbidden", "Administrator role is required.");
-  }
-  return user;
-}

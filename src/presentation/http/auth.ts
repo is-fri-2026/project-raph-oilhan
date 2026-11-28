@@ -1,10 +1,10 @@
 // This file validates Keycloak bearer tokens and attaches the application user to the request.
 
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
-import type { NextFunction, Request, Response } from "express";
-import type { User } from "./types.js";
-import { provisionUser } from "./store.js";
+import type { NextFunction, Request, RequestHandler, Response } from "express";
+import type { User } from "../../domain/user-domain.js";
 import { HttpError } from "./errors.js";
+import type { UsersService } from "../../application/services/users-service.js";
 
 const keycloakIssuer = process.env.KEYCLOAK_ISSUER_URL;
 const keycloakAudience = process.env.KEYCLOAK_AUDIENCE;
@@ -15,26 +15,37 @@ const keycloakJwks = keycloakIssuer
     ))
   : undefined;
 
-export function requireAuth(
-  request: Request,
-  _response: Response,
-  next: NextFunction,
-) {
-  const header = request.header("authorization");
-  if (!header?.startsWith("Bearer ")) {
-    return next(new HttpError(401, "Unauthorized", "A valid bearer token is required."));
-  }
+export interface AuthMiddleware {
+  requireAuth: RequestHandler;
+  optionalAuth: RequestHandler;
+}
 
-  if (!keycloakJwks || !keycloakIssuer) {
-    throw new Error("KEYCLOAK_ISSUER_URL must be configured.");
-  }
-  return requireKeycloakAuth(header.slice(7), request, next);
+export function createAuthMiddleware(users: UsersService): AuthMiddleware {
+  const requireAuth: RequestHandler = (request, _response, next) => {
+    const header = request.header("authorization");
+    if (!header?.startsWith("Bearer ")) {
+      return next(new HttpError(401, "Unauthorized", "A valid bearer token is required."));
+    }
+
+    if (!keycloakJwks || !keycloakIssuer) {
+      throw new Error("KEYCLOAK_ISSUER_URL must be configured.");
+    }
+    return requireKeycloakAuth(header.slice(7), request, next, users);
+  };
+
+  const optionalAuth: RequestHandler = (request, response, next) => {
+    if (!request.header("authorization")) return next();
+    return requireAuth(request, response, next);
+  };
+
+  return { requireAuth, optionalAuth };
 }
 
 async function requireKeycloakAuth(
   token: string,
   request: Request,
   next: NextFunction,
+  users: UsersService,
 ) {
   try {
     const verification = keycloakAudience
@@ -43,8 +54,7 @@ async function requireKeycloakAuth(
           audience: keycloakAudience,
         })
       : await jwtVerify(token, keycloakJwks!, { issuer: keycloakIssuer });
-    const user = await findOrCreateUserFromKeycloakClaims(verification.payload);
-    request.user = user;
+    request.user = await findOrCreateUserFromKeycloakClaims(verification.payload, users);
     return next();
   } catch (error) {
     console.error("Keycloak token validation failed:", error);
@@ -52,7 +62,10 @@ async function requireKeycloakAuth(
   }
 }
 
-async function findOrCreateUserFromKeycloakClaims(claims: JWTPayload): Promise<User> {
+async function findOrCreateUserFromKeycloakClaims(
+  claims: JWTPayload,
+  users: UsersService,
+): Promise<User> {
   if (typeof claims.sub !== "string") {
     throw new Error("Keycloak token has no subject");
   }
@@ -66,9 +79,8 @@ async function findOrCreateUserFromKeycloakClaims(claims: JWTPayload): Promise<U
     throw new Error("Keycloak token has no email or preferred username");
   }
 
-  const roles = keycloakRoles(claims);
-  const role = roles.includes("admin") ? "admin" : "user";
-  return provisionUser(email, role, claims.sub);
+  const role = keycloakRoles(claims).includes("admin") ? "admin" : "user";
+  return users.provisionFromIdentity(email, role, claims.sub);
 }
 
 function keycloakRoles(claims: JWTPayload): string[] {
@@ -82,17 +94,4 @@ function keycloakRoles(claims: JWTPayload): string[] {
     return realmAccess.roles.filter((role): role is string => typeof role === "string");
   }
   return [];
-}
-
-export function optionalAuth(
-  request: Request,
-  response: Response,
-  next: NextFunction,
-) {
-  // Public requests may see approved alternatives; a token is needed for private pending ones.
-  if (!request.header("authorization")) {
-    return next();
-  }
-
-  return requireAuth(request, response, next);
 }

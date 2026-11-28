@@ -67,7 +67,7 @@ erDiagram
 | Entity | Description | Important rules / constraints |
 |--------|-------------|-------------------------------|
 | `User` | A person who searches, contributes or administers the platform. | `role` is `user` or `admin`; email is unique. |
-| `SoftwareAlternative` | A software solution proposed for one primary task and one or more compatible devices. | A new submission is `pending` until approved by an admin; only approved alternatives are public. |
+| `SoftwareAlternative` | A software solution proposed for one primary task and one or more compatible devices. | A new submission is `pending` until approved by an admin; only approved alternatives are public; a submitter cannot submit the same name twice. |
 | `Task` | An activity that a user wants to perform, such as editing text or playing music. | The name is unique; a task is `pending` until approved by an admin; one task can have many alternatives. |
 | `Device` | A device and its relevant hardware or operating-system constraints. | A device is `pending` until approved by an admin and can be compatible with many alternatives. |
 | `DeviceCompatibility` | Associative entity describing whether an alternative works on a device. | The pair `(deviceId, alternativeId)` is unique and must contain compatibility information. |
